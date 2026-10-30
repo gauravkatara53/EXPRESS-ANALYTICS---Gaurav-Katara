@@ -40,13 +40,15 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
 
+    # LLM & Generation settings (Phase 4)
+    LLM_PROVIDER: str = "gemini"  # "gemini" or "mock"
+    GEMINI_LLM_MODEL: str = "gemini-1.5-flash"
+    MAX_RETRIES: int = 2
+    TEMPERATURE: float = 0.0
+
     # Retrieval settings
     DEFAULT_TOP_K: int = 4
     SIMILARITY_SCORE_THRESHOLD: Optional[float] = 0.0
-
-    # Reserved future LLM settings (Phase 4)
-    LLM_PROVIDER: str = "google"
-    LLM_MODEL: str = "gemini-1.5-flash"
 
 
 settings = Settings()

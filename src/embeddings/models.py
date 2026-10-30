@@ -158,3 +158,4 @@ def get_embeddings_model(
             f"Unsupported embedding provider '{selected_provider}'. "
             "Supported providers: 'gemini', 'mock'."
         )
+

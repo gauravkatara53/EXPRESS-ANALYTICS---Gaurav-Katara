@@ -296,3 +296,4 @@ class ChromaVectorStore:
             metadata={"hnsw:space": "cosine"},
         )
         logger.info(f"Cleared ChromaDB collection '{self.collection_name}'.")
+

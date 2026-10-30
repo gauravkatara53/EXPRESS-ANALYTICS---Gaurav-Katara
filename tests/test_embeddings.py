@@ -60,3 +60,4 @@ def test_get_embeddings_model_factory():
 
     with pytest.raises(ValueError):
         get_embeddings_model(provider="invalid_provider")
+

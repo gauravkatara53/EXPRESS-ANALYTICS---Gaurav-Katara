@@ -168,3 +168,4 @@ def test_chroma_delete_document(tmp_path: Path, test_chunks: list[DocumentChunk]
     assert deleted == 2
     assert store.collection.count() == 1
     assert store.get_indexed_documents() == ["pydantic_doc.md"]
+
