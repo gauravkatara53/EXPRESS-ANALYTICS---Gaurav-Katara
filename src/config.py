@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     LLM_PROVIDER: str = "groq"  # "groq", "gemini", "openai", or "mock"
     GEMINI_LLM_MODEL: str = "gemini-1.5-flash"
     GROQ_API_KEY: Optional[str] = None
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "qwen/qwen3.8-27b"
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_LLM_MODEL: str = "gpt-4o-mini"
     MAX_RETRIES: int = 2
