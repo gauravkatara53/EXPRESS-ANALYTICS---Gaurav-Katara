@@ -191,27 +191,76 @@ def get_llm(
 ) -> BaseChatModel:
     """Factory to initialize the appropriate Chat LLM.
 
+    Supports Groq, Google Gemini, OpenAI, and Deterministic Mock.
+
     Args:
-        provider: "gemini" or "mock" (defaults to settings.LLM_PROVIDER).
-        model: Specific model name (e.g., "gemini-1.5-flash").
+        provider: "groq", "gemini", "openai", or "mock" (defaults to settings.LLM_PROVIDER).
+        model: Specific model name (e.g., "llama-3.3-70b-versatile", "gemini-1.5-flash").
         temperature: Sampling temperature (default: 0.0 for deterministic output).
         api_key: Optional explicit API key.
 
     Returns:
         Instance conforming to LangChain's BaseChatModel.
     """
-    selected_provider = (provider or settings.LLM_PROVIDER or "gemini").lower()
-    active_key = (
-        api_key
+    selected_provider = (provider or settings.LLM_PROVIDER or "groq").lower()
+    
+    groq_key = (
+        (api_key if provider == "groq" else None)
+        or settings.GROQ_API_KEY
+        or os.getenv("GROQ_API_KEY")
+    )
+    gemini_key = (
+        (api_key if provider == "gemini" else None)
         or settings.GEMINI_API_KEY
         or settings.GOOGLE_API_KEY
         or os.getenv("GEMINI_API_KEY")
         or os.getenv("GOOGLE_API_KEY")
     )
+    openai_key = (
+        (api_key if provider == "openai" else None)
+        or settings.OPENAI_API_KEY
+        or os.getenv("OPENAI_API_KEY")
+    )
     temp = temperature if temperature is not None else settings.TEMPERATURE
 
-    if selected_provider == "gemini":
-        if active_key:
+    # Auto-detection based on configured keys
+    if groq_key and selected_provider not in {"mock", "test"}:
+        selected_provider = "groq"
+    elif gemini_key and selected_provider not in {"mock", "test", "groq"}:
+        selected_provider = "gemini"
+    elif openai_key and selected_provider not in {"mock", "test", "groq", "gemini"}:
+        selected_provider = "openai"
+
+    # 1. Groq Provider
+    if selected_provider == "groq":
+        if groq_key:
+            try:
+                from langchain_groq import ChatGroq
+
+                chosen_model = model or settings.GROQ_MODEL
+                llm = ChatGroq(
+                    model_name=chosen_model,
+                    temperature=temp,
+                    groq_api_key=groq_key,
+                )
+                logger.info(f"Initialized Groq Chat LLM with model '{chosen_model}'.")
+                return llm
+            except Exception as e:
+                logger.warning(
+                    f"Failed to initialize live Groq LLM: {e}. Falling back to MockChatModel."
+                )
+                return MockChatModel()
+        else:
+            logger.info(
+                "No GROQ_API_KEY detected in environment. "
+                "Using MockChatModel for offline/test execution. "
+                "(Set GROQ_API_KEY in .env to connect to live Groq LPU models)"
+            )
+            return MockChatModel()
+
+    # 2. Google Gemini Provider
+    elif selected_provider == "gemini":
+        if gemini_key:
             try:
                 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -219,7 +268,7 @@ def get_llm(
                 llm = ChatGoogleGenerativeAI(
                     model=chosen_model,
                     temperature=temp,
-                    google_api_key=active_key,
+                    google_api_key=gemini_key,
                 )
                 logger.info(f"Initialized Google Gemini LLM with model '{chosen_model}'.")
                 return llm
@@ -232,9 +281,31 @@ def get_llm(
         else:
             logger.info(
                 "No GEMINI_API_KEY / GOOGLE_API_KEY detected in environment. "
-                "Using MockChatModel for offline/test execution. "
-                "(Set GEMINI_API_KEY in .env to connect to live Gemini 1.5 Flash)"
+                "Using MockChatModel for offline/test execution."
             )
+            return MockChatModel()
+
+    # 3. OpenAI Provider
+    elif selected_provider == "openai":
+        if openai_key:
+            try:
+                from langchain_openai import ChatOpenAI
+
+                chosen_model = model or settings.OPENAI_LLM_MODEL
+                llm = ChatOpenAI(
+                    model=chosen_model,
+                    temperature=temp,
+                    api_key=openai_key,
+                )
+                logger.info(f"Initialized OpenAI Chat LLM with model '{chosen_model}'.")
+                return llm
+            except Exception as e:
+                logger.warning(
+                    f"Failed to initialize live OpenAI LLM: {e}. Falling back to MockChatModel."
+                )
+                return MockChatModel()
+        else:
+            logger.info("No OPENAI_API_KEY detected in environment. Using MockChatModel.")
             return MockChatModel()
 
     elif selected_provider in {"mock", "test"}:
@@ -243,5 +314,5 @@ def get_llm(
 
     else:
         raise ValueError(
-            f"Unsupported LLM provider '{selected_provider}'. Supported providers: 'gemini', 'mock'."
+            f"Unsupported LLM provider '{selected_provider}'. Supported providers: 'groq', 'gemini', 'openai', 'mock'."
         )

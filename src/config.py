@@ -46,8 +46,12 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: Optional[str] = None
 
     # LLM & Generation settings
-    LLM_PROVIDER: str = "gemini"  # "gemini" or "mock"
+    LLM_PROVIDER: str = "groq"  # "groq", "gemini", "openai", or "mock"
     GEMINI_LLM_MODEL: str = "gemini-1.5-flash"
+    GROQ_API_KEY: Optional[str] = None
+    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    OPENAI_API_KEY: Optional[str] = None
+    OPENAI_LLM_MODEL: str = "gpt-4o-mini"
     MAX_RETRIES: int = 2
     TEMPERATURE: float = 0.0
 
