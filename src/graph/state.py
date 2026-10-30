@@ -39,3 +39,4 @@ class GraphState(TypedDict):
     retry_count: int
     max_retries: int
     is_fallback: bool
+

@@ -227,3 +227,4 @@ class RAGNodes:
             "citations": citations_list,
             "is_fallback": False,
         }
+

@@ -1,5 +1,7 @@
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from src.database.feedback_db import FeedbackRecord
 
 
 class ChunkMetadata(BaseModel):
@@ -101,3 +103,95 @@ class VectorStoreStats(BaseModel):
     total_chunks: int
     persist_directory: str
     indexed_documents: List[str]
+
+
+# ------------------------------------------------------------------------------
+# Phase 5 Schemas: Query, Ingest, Documents, Feedback
+# ------------------------------------------------------------------------------
+
+class QueryRequest(BaseModel):
+    """Natural language question request payload for POST /api/v1/query."""
+
+    question: str = Field(min_length=1, max_length=2000, description="User's technical documentation question")
+    max_retries: Optional[int] = Field(
+        default=2, ge=0, le=5, description="Maximum query reformulation retries allowed"
+    )
+
+    @field_validator("question")
+    @classmethod
+    def validate_non_whitespace(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("Question cannot be empty or whitespace only.")
+        return cleaned
+
+
+class QueryResponse(BaseModel):
+    """Response payload for POST /api/v1/query executing the LangGraph workflow."""
+
+    query_id: str = Field(description="Unique identifier for tracing and submitting feedback")
+    question: str = Field(description="Original user question")
+    answer: str = Field(description="Final generated answer grounded in technical documentation")
+    citations: List[str] = Field(description="Source filenames referenced in the answer")
+    is_fallback: bool = Field(description="Whether safe fallback response was triggered")
+    retry_count: int = Field(description="Number of self-correction retrieval retries executed")
+    query_intent: str = Field(description="Classified query intent")
+    search_query: str = Field(description="Final search query used for retrieval")
+    retrieved_chunks_count: int = Field(description="Total candidate chunks retrieved")
+    relevant_chunks_count: int = Field(description="Chunks evaluated as relevant by grader")
+
+
+class IngestUploadResponse(BaseModel):
+    """Response payload for POST /api/v1/ingest file upload."""
+
+    uploaded_files: List[str] = Field(description="Successfully processed and stored files")
+    total_chunks_indexed: int = Field(description="New chunks indexed into ChromaDB")
+    total_chunks_updated: int = Field(description="Existing chunks updated with new content")
+    total_chunks_skipped: int = Field(description="Duplicate chunks skipped without re-embedding")
+    total_store_chunks: int = Field(description="Total chunks in ChromaDB collection")
+    failed_files: List[str] = Field(description="Files that failed to upload or parse with reasons")
+
+
+class DocumentInfo(BaseModel):
+    """Detailed metadata for an individual document indexed in ChromaDB."""
+
+    source_filename: str = Field(description="File name (e.g. fastapi_overview.md)")
+    document_title: str = Field(description="Title extracted from document")
+    file_type: str = Field(description="File extension (.md, .txt, .html)")
+    source_path: str = Field(description="Relative path on disk")
+    chunk_count: int = Field(description="Number of chunks indexed for this document")
+    total_characters: int = Field(description="Total characters across all chunks")
+
+
+class DocumentListResponse(BaseModel):
+    """Response payload for GET /api/v1/documents catalog."""
+
+    total_documents: int
+    total_chunks: int
+    documents: List[DocumentInfo]
+
+
+class FeedbackRequest(BaseModel):
+    """Request payload for POST /api/v1/feedback."""
+
+    query_id: str = Field(min_length=1, description="Unique query ID returned from POST /api/v1/query")
+    rating: str = Field(description="Feedback rating: 'thumbs_up' or 'thumbs_down'")
+    comment: Optional[str] = Field(default=None, max_length=2000, description="Optional qualitative feedback")
+
+    @field_validator("rating")
+    @classmethod
+    def validate_rating_value(cls, v: str) -> str:
+        normalized = v.strip().lower().replace(" ", "_")
+        if normalized in {"thumbs_up", "up", "positive", "1", "+1"}:
+            return "thumbs_up"
+        elif normalized in {"thumbs_down", "down", "negative", "-1", "0"}:
+            return "thumbs_down"
+        raise ValueError("Rating must be 'thumbs_up' or 'thumbs_down'.")
+
+
+class FeedbackResponse(BaseModel):
+    """Response payload for POST /api/v1/feedback."""
+
+    status: str = "success"
+    message: str = "Feedback recorded successfully."
+    feedback: FeedbackRecord

@@ -34,13 +34,18 @@ class Settings(BaseSettings):
     )
     CHROMA_COLLECTION_NAME: str = "technical_documentation"
 
+    # SQLite Feedback Database settings (Phase 5)
+    SQLITE_DB_PATH: Path = Field(
+        default_factory=lambda: Path(os.getenv("SQLITE_DB_PATH", "feedback.db"))
+    )
+
     # Embedding Model settings
     EMBEDDING_PROVIDER: str = "gemini"  # "gemini" or "mock"
     GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"
     GEMINI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
 
-    # LLM & Generation settings (Phase 4)
+    # LLM & Generation settings
     LLM_PROVIDER: str = "gemini"  # "gemini" or "mock"
     GEMINI_LLM_MODEL: str = "gemini-1.5-flash"
     MAX_RETRIES: int = 2

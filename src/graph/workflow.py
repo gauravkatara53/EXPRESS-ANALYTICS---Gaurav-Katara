@@ -107,3 +107,4 @@ def run_rag_pipeline(
 
     result = graph.invoke(initial_state)
     return result
+

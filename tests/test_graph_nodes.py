@@ -180,3 +180,4 @@ def test_generation_node_fallback(mock_llm: MockChatModel):
     assert res["is_fallback"]
     assert res["citations"] == []
     assert "not contain sufficient information" in res["generation"].lower()
+

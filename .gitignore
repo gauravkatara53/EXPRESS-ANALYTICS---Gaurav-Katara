@@ -28,3 +28,10 @@ htmlcov/
 chroma_db/
 vector_store/
 
+# SQLite & local databases
+*.db
+*.sqlite
+*.sqlite3
+feedback.db
+
+

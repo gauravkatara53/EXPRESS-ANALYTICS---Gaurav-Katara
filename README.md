@@ -4,7 +4,7 @@ An enterprise-ready Retrieval-Augmented Generation (RAG) system built with **Lan
 
 ---
 
-## Current Status: Phase 1, Phase 2, Phase 3, & Phase 4 Implemented
+## Current Status: All Core Phases Completed (1 – 5)
 
 - **Phase 1: Project Setup & Architecture** (Completed)
   - Clean modular project layout, configuration management with `pydantic-settings` and `.env`.
@@ -33,7 +33,13 @@ An enterprise-ready Retrieval-Augmented Generation (RAG) system built with **Lan
     - Relevant documents found $\rightarrow$ proceed to `generate`.
     - No relevant documents & retries left $\rightarrow$ route to `rewrite_query` $\rightarrow$ re-retrieve.
     - No relevant documents & retry limit reached $\rightarrow$ proceed to `generate` (safe fallback without hallucination).
-  - **Comprehensive Test Suite**: 35 automated tests (100% passing) with zero-cost mocked LLMs and CLI verification tools.
+- **Phase 5: FastAPI Production Endpoints & Feedback Persistence** (Completed)
+  - **POST `/api/v1/query`** (and `/query`): Executes the full LangGraph pipeline; returns grounded answer, citations, retry count, and fallback status.
+  - **POST `/api/v1/ingest`** (and `/ingest`): Multi-file upload (`.md`, `.txt`, `.html`) with traversal sanitization, chunking, deduplicated ChromaDB indexing, and summary metrics.
+  - **GET `/api/v1/documents`** (and `/documents`): Live catalog of indexed documents retrieved directly from ChromaDB with chunk counts, titles, formats, and characters.
+  - **POST `/api/v1/feedback`** (and `/feedback`): Persistent user feedback collection (`thumbs_up` / `thumbs_down` + optional comments) stored in SQLite (`feedback.db`).
+  - Decoupled service architecture (`src/services/` and `src/database/`) keeping route controllers thin.
+  - **45 Automated Unit & Integration Tests (100% Passing)** with zero-cost mocked LLMs.
 
 ---
 
@@ -43,9 +49,9 @@ An enterprise-ready Retrieval-Augmented Generation (RAG) system built with **Lan
 express-analytics-rag/
 ├── .env                          # Local environment configuration
 ├── .env.example                  # Template configuration with descriptions
-├── .gitignore                    # Git ignore file (cache, venv, vector stores)
+├── .gitignore                    # Git ignore file (cache, venv, databases, vector stores)
 ├── README.md                     # Comprehensive project guide and documentation
-├── requirements.txt              # Project dependencies
+├── requirements.txt              # Project dependencies (FastAPI, LangGraph, ChromaDB, etc.)
 ├── verify_ingestion.py           # CLI tool to verify Phase 1 & 2 loading & chunking
 ├── verify_vector_store.py        # CLI tool to verify Phase 3 indexing & retrieval
 ├── verify_workflow.py            # CLI tool to verify Phase 4 LangGraph self-corrective workflow
@@ -64,10 +70,14 @@ express-analytics-rag/
 │   ├── config.py                 # Pydantic Settings configuration loader
 │   ├── main.py                   # FastAPI main entry point & lifespan handlers
 │   │
-│   ├── api/                      # Web API Layer
+│   ├── api/                      # Web API Routing & Schemas
 │   │   ├── __init__.py
-│   │   ├── routes.py             # API endpoints (health, info, ingest, search, stats)
-│   │   └── schemas.py            # Pydantic schemas (DocumentChunk, SearchResult, etc.)
+│   │   ├── routes.py             # FastAPI routes (/query, /ingest, /documents, /feedback, etc.)
+│   │   └── schemas.py            # Pydantic request/response schemas
+│   │
+│   ├── database/                 # SQLite Persistence
+│   │   ├── __init__.py
+│   │   └── feedback_db.py        # SQLite feedback database manager
 │   │
 │   ├── embeddings/               # Vector Embeddings Module
 │   │   ├── __init__.py
@@ -93,14 +103,22 @@ express-analytics-rag/
 │   │   ├── __init__.py
 │   │   └── vector_store.py       # ChromaVectorStore (persistence, deduplication, search)
 │   │
+│   ├── services/                 # Business Logic Service Layer
+│   │   ├── __init__.py
+│   │   ├── document_service.py   # Aggregates indexed documents from ChromaDB
+│   │   ├── feedback_service.py   # Validates and records user feedback
+│   │   ├── ingestion_service.py  # Handles file uploads, sanitization, chunking & indexing
+│   │   └── query_service.py      # Executes LangGraph pipeline & formats response
+│   │
 │   └── utils/                    # Shared Utilities
 │       ├── __init__.py
 │       └── logger.py             # Centralized structured logger
 │
-└── tests/                        # Automated Pytest Suite (35 tests, 100% passing)
+└── tests/                        # Automated Pytest Suite (45 tests, 100% passing)
     ├── __init__.py
-    ├── test_api.py               # Tests for FastAPI endpoints
+    ├── test_api.py               # Tests for all FastAPI endpoints (/query, /ingest, /documents, /feedback)
     ├── test_embeddings.py        # Tests for embedding generation and factory
+    ├── test_feedback_db.py       # Tests for SQLite feedback schema and queries
     ├── test_graph_nodes.py       # Tests for each LangGraph node independently
     ├── test_loaders.py           # Tests for document loaders and edge cases
     ├── test_splitter.py          # Tests for text splitting and metadata integrity
@@ -151,19 +169,121 @@ express-analytics-rag/
            - Expands query with technical synonyms & alternative keywords
 ```
 
-### Shared State Schema (`src/graph/state.py`)
-```python
-class GraphState(TypedDict):
-    question: str                   # Original user question
-    search_query: str               # Active search query (analyzed or rewritten)
-    query_intent: str               # conceptual, how-to, troubleshooting, api_reference
-    documents: List[SearchResult]   # Chunks retrieved from ChromaDB
-    relevant_documents: List[SearchResult] # Chunks graded relevant
-    generation: str                 # Final generated answer
-    citations: List[str]            # List of cited source filenames
-    retry_count: int                # Number of reformulation retries so far
-    max_retries: int                # Retry limit before fallback (default: 2)
-    is_fallback: bool               # True if answered via safe fallback
+---
+
+## Phase 5 FastAPI API Reference
+
+The server exposes both versioned (`/api/v1/...`) and standard root endpoints (`/...`) to support all client conventions:
+
+### 1. `POST /api/v1/query` (and `/query`)
+Executes the LangGraph self-corrective RAG workflow.
+
+**Request Body**:
+```json
+{
+  "question": "How do I validate models with Pydantic BaseModel?",
+  "top_k": 4,
+  "max_retries": 2
+}
+```
+
+**Response Body**:
+```json
+{
+  "query_id": "993fe01b-c744-4861-bbd4-539091bca72b",
+  "question": "How do I validate models with Pydantic BaseModel?",
+  "answer": "Based on the technical documentation:\n\nIn Pydantic V2, you define schemas by inheriting from BaseModel...",
+  "citations": [
+    "pydantic_validation.md"
+  ],
+  "is_fallback": false,
+  "retry_count": 0,
+  "query_intent": "conceptual",
+  "execution_details": {
+    "search_query": "validate models with Pydantic BaseModel",
+    "relevant_chunks_count": 4,
+    "max_retries": 2
+  }
+}
+```
+
+*When an off-topic question is asked, the pipeline executes self-correction (query rewriting), detects zero relevant technical context, and returns a safe fallback without hallucination (`is_fallback: true`, `citations: []`).*
+
+---
+
+### 2. `POST /api/v1/ingest` (and `/ingest`)
+Uploads Markdown (`.md`), Plain Text (`.txt`), or HTML (`.html`) files to the server, parses them, splits them into semantic chunks, and indexes them in ChromaDB.
+
+**Request**: Multipart form data with one or more files under key `files`.
+
+**Response Body**:
+```json
+{
+  "uploaded_files": ["new_documentation.md"],
+  "failed_files": [],
+  "chunks_indexed": 3,
+  "chunks_updated": 0,
+  "chunks_skipped_duplicate": 0,
+  "total_store_chunks": 15,
+  "message": "Ingestion completed: 1 uploaded, 0 failed, 3 chunks indexed."
+}
+```
+
+---
+
+### 3. `GET /api/v1/documents` (and `/documents`)
+Inspects the persistent ChromaDB collection and returns metadata for all indexed documents.
+
+**Response Body**:
+```json
+{
+  "total_documents": 4,
+  "total_chunks": 12,
+  "documents": [
+    {
+      "source_filename": "fastapi_overview.md",
+      "document_title": "FastAPI Architecture Overview",
+      "file_type": ".md",
+      "source_path": "data/documents/fastapi_overview.md",
+      "chunk_count": 3,
+      "total_characters": 2240
+    },
+    {
+      "source_filename": "pydantic_validation.md",
+      "document_title": "Pydantic V2 Data Validation Guide",
+      "file_type": ".md",
+      "source_path": "data/documents/pydantic_validation.md",
+      "chunk_count": 3,
+      "total_characters": 2180
+    }
+  ]
+}
+```
+
+---
+
+### 4. `POST /api/v1/feedback` (and `/feedback`)
+Persists user ratings and qualitative feedback into an SQLite database (`feedback.db`).
+
+**Request Body**:
+```json
+{
+  "query_id": "993fe01b-c744-4861-bbd4-539091bca72b",
+  "rating": "thumbs_up",
+  "comment": "Accurate response with correct citation of pydantic_validation.md."
+}
+```
+
+**Response Body**:
+```json
+{
+  "feedback_id": 1,
+  "query_id": "993fe01b-c744-4861-bbd4-539091bca72b",
+  "rating": "thumbs_up",
+  "comment": "Accurate response with correct citation of pydantic_validation.md.",
+  "created_at": "2026-10-30T17:55:00.123456",
+  "message": "Feedback submitted successfully."
+}
 ```
 
 ---
@@ -190,6 +310,44 @@ GEMINI_API_KEY="your-gemini-api-key-here"
 
 ---
 
+## Running the Application
+
+### 1. Launch FastAPI Server
+```bash
+uvicorn src.main:app --reload --port 8000
+```
+- Interactive OpenAPI / Swagger UI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+- Alternative ReDoc UI: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+
+### 2. Sample cURL Commands
+
+**Query the assistant**:
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/query" \
+     -H "Content-Type: application/json" \
+     -d '{"question": "How does FastAPI handle dependency injection?", "top_k": 3}'
+```
+
+**List indexed documents**:
+```bash
+curl -X GET "http://127.0.0.1:8000/api/v1/documents"
+```
+
+**Upload new document**:
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/ingest" \
+     -F "files=@data/documents/fastapi_overview.md"
+```
+
+**Submit feedback**:
+```bash
+curl -X POST "http://127.0.0.1:8000/api/v1/feedback" \
+     -H "Content-Type: application/json" \
+     -d '{"query_id": "test-id-123", "rating": "thumbs_up", "comment": "Great answer!"}'
+```
+
+---
+
 ## Verification & Execution
 
 ### 1. Run LangGraph Self-Corrective Workflow Verifier
@@ -197,70 +355,88 @@ GEMINI_API_KEY="your-gemini-api-key-here"
 python verify_workflow.py
 ```
 
-**Scenario 1: Technical question with relevant context (Pydantic models)**:
-- Trace: `query_analysis` $\rightarrow$ `retrieve` $\rightarrow$ `grade_documents` (4/4 relevant) $\rightarrow$ `generate`
-- Output: Answer grounded in context citing `[pydantic_validation.md]`.
-- Retries: 0. Fallback: False.
+### 2. Run Ingestion and Vector Store Verifiers
+```bash
+python verify_ingestion.py
+python verify_vector_store.py
+```
 
-**Scenario 2: Off-topic query triggering self-correction and safe fallback ("chocolate chip cookies")**:
-- Trace: `query_analysis` $\rightarrow$ `retrieve` $\rightarrow$ `grade_documents` (0/4 relevant) $\rightarrow$ `rewrite_query` (Retry 1/2) $\rightarrow$ `retrieve` $\rightarrow$ `grade_documents` (0/4 relevant) $\rightarrow$ `rewrite_query` (Retry 2/2) $\rightarrow$ `retrieve` $\rightarrow$ `grade_documents` (0/4 relevant) $\rightarrow$ `generate` (Safe Fallback)
-- Output: *"I am sorry, but the provided technical documentation does not contain sufficient information to answer your question regarding 'What is the recipe for baking chocolate chip cookies?'."*
-- Retries: 2. Fallback: True. Citations: []. Zero hallucination.
-
----
-
-### 2. Run Automated Pytest Suite
+### 3. Run Automated Pytest Suite
 ```bash
 pytest -v
 ```
 
-Expected output (`35 passed in 1.20s`):
+Expected output (`45 passed in ~1.3s`):
 ```text
 tests/test_api.py::test_health_check_endpoint PASSED                     [  2%]
-tests/test_api.py::test_system_info_endpoint PASSED                      [  5%]
-tests/test_api.py::test_ingest_preview_endpoint PASSED                   [  8%]
-tests/test_api.py::test_ingest_preview_invalid_overlap PASSED            [ 11%]
-tests/test_api.py::test_index_and_search_endpoints PASSED                [ 14%]
-tests/test_embeddings.py::test_deterministic_embeddings_properties PASSED [ 17%]
-tests/test_embeddings.py::test_deterministic_batch_embedding PASSED      [ 20%]
-tests/test_embeddings.py::test_get_embeddings_model_factory PASSED       [ 22%]
-tests/test_graph_nodes.py::test_query_analysis_node PASSED               [ 25%]
-tests/test_graph_nodes.py::test_retrieval_node PASSED                    [ 28%]
-tests/test_graph_nodes.py::test_document_grading_node PASSED             [ 31%]
-tests/test_graph_nodes.py::test_query_rewrite_node PASSED                [ 34%]
-tests/test_graph_nodes.py::test_generation_node_with_context PASSED      [ 37%]
-tests/test_graph_nodes.py::test_generation_node_fallback PASSED          [ 40%]
-tests/test_loaders.py::test_load_markdown_document PASSED                [ 42%]
-tests/test_loaders.py::test_load_text_document PASSED                    [ 45%]
-tests/test_loaders.py::test_load_html_document PASSED                    [ 48%]
-tests/test_loaders.py::test_load_empty_file PASSED                       [ 51%]
-tests/test_loaders.py::test_load_whitespace_only_file PASSED             [ 54%]
-tests/test_loaders.py::test_unsupported_file_format PASSED               [ 57%]
-tests/test_loaders.py::test_nonexistent_file PASSED                      [ 60%]
-tests/test_loaders.py::test_directory_batch_load PASSED                  [ 62%]
-tests/test_splitter.py::test_chunking_with_metadata PASSED               [ 65%]
-tests/test_splitter.py::test_chunk_size_and_overlap_validation PASSED    [ 68%]
-tests/test_splitter.py::test_batch_splitting PASSED                      [ 71%]
-tests/test_splitter.py::test_summary_generation PASSED                   [ 74%]
-tests/test_vector_store.py::test_chroma_indexing_and_duplicate_prevention PASSED [ 77%]
-tests/test_vector_store.py::test_chroma_update_modified_chunk PASSED     [ 80%]
-tests/test_vector_store.py::test_chroma_disk_persistence PASSED          [ 82%]
-tests/test_vector_store.py::test_chroma_similarity_search_and_metadata PASSED [ 85%]
-tests/test_vector_store.py::test_chroma_delete_document PASSED           [ 88%]
-tests/test_workflow.py::test_decide_to_generate_or_retry PASSED          [ 91%]
-tests/test_workflow.py::test_end_to_end_successful_rag_workflow PASSED   [ 94%]
+tests/test_api.py::test_system_info_endpoint PASSED                      [  4%]
+tests/test_api.py::test_ingest_preview_endpoint PASSED                   [  6%]
+tests/test_api.py::test_ingest_preview_invalid_overlap PASSED            [  8%]
+tests/test_api.py::test_direct_search_and_stats_endpoints PASSED         [ 11%]
+tests/test_api.py::test_query_endpoint_success PASSED                    [ 13%]
+tests/test_api.py::test_query_endpoint_fallback_for_off_topic PASSED     [ 15%]
+tests/test_api.py::test_query_endpoint_empty_question PASSED             [ 17%]
+tests/test_api.py::test_upload_file_ingest_endpoint PASSED               [ 20%]
+tests/test_api.py::test_upload_file_unsupported_format PASSED            [ 22%]
+tests/test_api.py::test_documents_catalog_endpoint PASSED                [ 24%]
+tests/test_api.py::test_feedback_endpoint_success PASSED                 [ 26%]
+tests/test_api.py::test_feedback_endpoint_invalid_rating PASSED          [ 28%]
+tests/test_api.py::test_root_route_aliases PASSED                        [ 31%]
+tests/test_embeddings.py::test_deterministic_embeddings_properties PASSED [ 33%]
+tests/test_embeddings.py::test_deterministic_batch_embedding PASSED      [ 35%]
+tests/test_embeddings.py::test_get_embeddings_model_factory PASSED       [ 37%]
+tests/test_feedback_db.py::test_sqlite_feedback_db PASSED                [ 40%]
+tests/test_graph_nodes.py::test_query_analysis_node PASSED               [ 42%]
+tests/test_graph_nodes.py::test_retrieval_node PASSED                    [ 44%]
+tests/test_graph_nodes.py::test_document_grading_node PASSED             [ 46%]
+tests/test_graph_nodes.py::test_query_rewrite_node PASSED                [ 48%]
+tests/test_graph_nodes.py::test_generation_node_with_context PASSED      [ 51%]
+tests/test_graph_nodes.py::test_generation_node_fallback PASSED          [ 53%]
+tests/test_loaders.py::test_load_markdown_document PASSED                [ 55%]
+tests/test_loaders.py::test_load_text_document PASSED                    [ 57%]
+tests/test_loaders.py::test_load_html_document PASSED                    [ 60%]
+tests/test_loaders.py::test_load_empty_file PASSED                       [ 62%]
+tests/test_loaders.py::test_load_whitespace_only_file PASSED             [ 64%]
+tests/test_loaders.py::test_unsupported_file_format PASSED               [ 66%]
+tests/test_loaders.py::test_nonexistent_file PASSED                      [ 68%]
+tests/test_loaders.py::test_directory_batch_load PASSED                  [ 71%]
+tests/test_splitter.py::test_chunking_with_metadata PASSED               [ 73%]
+tests/test_splitter.py::test_chunk_size_and_overlap_validation PASSED    [ 75%]
+tests/test_splitter.py::test_batch_splitting PASSED                      [ 77%]
+tests/test_splitter.py::test_summary_generation PASSED                   [ 80%]
+tests/test_vector_store.py::test_chroma_indexing_and_duplicate_prevention PASSED [ 82%]
+tests/test_vector_store.py::test_chroma_update_modified_chunk PASSED     [ 84%]
+tests/test_vector_store.py::test_chroma_disk_persistence PASSED          [ 86%]
+tests/test_vector_store.py::test_chroma_similarity_search_and_metadata PASSED [ 88%]
+tests/test_vector_store.py::test_chroma_delete_document PASSED           [ 91%]
+tests/test_workflow.py::test_decide_to_generate_or_retry PASSED          [ 93%]
+tests/test_workflow.py::test_end_to_end_successful_rag_workflow PASSED   [ 95%]
 tests/test_workflow.py::test_end_to_end_irrelevant_query_self_correction PASSED [ 97%]
 tests/test_workflow.py::test_workflow_configurable_retry_limit PASSED    [100%]
 
-======================== 35 passed, 1 warning in 1.20s =========================
+======================== 45 passed, 1 warning in 1.28s =========================
 ```
 
 ---
 
-## Next Steps (Phase 5)
-- **Phase 5: Production FastAPI Endpoints & UI**:
-  - `POST /query`: Submit question $\rightarrow$ runs LangGraph workflow $\rightarrow$ returns answer + citations + trace metadata.
-  - `POST /ingest`: Ingest new documents from file uploads or URLs.
-  - `GET /documents`: List all indexed documents in corpus.
-  - `POST /feedback`: Thumbs up/down + comments recording.
-  - Interactive web UI (Streamlit or minimal frontend).
+## Assignment Requirements Traceability Matrix
+
+| Requirement | Implementation Component | Status |
+| :--- | :--- | :--- |
+| Corpus of technical docs (3–5 docs) | `data/documents/` (FastAPI, Pydantic, Python Typing, LangGraph) | ✅ Completed |
+| Ingestion & Multi-Format Loading | `src/ingestion/loaders.py` (`.md`, `.txt`, `.html`) | ✅ Completed |
+| Semantic Text Chunking | `src/ingestion/splitter.py` (`RecursiveCharacterTextSplitter`) | ✅ Completed |
+| Vector Store & Embeddings | `src/retrieval/vector_store.py`, `src/embeddings/models.py` | ✅ Completed |
+| Persistent Storage & Deduplication | ChromaDB persistence + SHA256 chunk deduplication | ✅ Completed |
+| LangGraph StateGraph Workflow | `src/graph/workflow.py`, `src/graph/state.py` | ✅ Completed |
+| Query Analysis Node | `src/graph/nodes.py::query_analysis` | ✅ Completed |
+| Semantic Retrieval Node | `src/graph/nodes.py::retrieval` | ✅ Completed |
+| Document Grading Node (CRAG) | `src/graph/nodes.py::document_grading` | ✅ Completed |
+| Query Rewrite Node & Retries | `src/graph/nodes.py::query_rewrite`, `src/graph/edges.py` | ✅ Completed |
+| Answer Generation with Citations | `src/graph/nodes.py::generation` | ✅ Completed |
+| Fallback without Hallucination | Safe fallback message when context is insufficient | ✅ Completed |
+| POST `/query` Endpoint | `src/api/routes.py::post_query` & `src/services/query_service.py` | ✅ Completed |
+| POST `/ingest` Endpoint | `src/api/routes.py::post_ingest` & `src/services/ingestion_service.py` | ✅ Completed |
+| GET `/documents` Endpoint | `src/api/routes.py::get_documents` & `src/services/document_service.py` | ✅ Completed |
+| POST `/feedback` Endpoint | `src/api/routes.py::post_feedback` & `src/database/feedback_db.py` | ✅ Completed |
+| Comprehensive Unit & End-to-End Tests | `tests/` (45 automated tests) | ✅ Completed |

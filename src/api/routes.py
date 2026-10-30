@@ -1,11 +1,17 @@
 from pathlib import Path
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
 from src.api.schemas import (
+    DocumentListResponse,
+    FeedbackRequest,
+    FeedbackResponse,
     HealthResponse,
     IndexingResult,
+    IngestUploadResponse,
     IngestionPreviewSummary,
+    QueryRequest,
+    QueryResponse,
     SearchQueryRequest,
     SearchResponse,
     VectorStoreStats,
@@ -14,6 +20,10 @@ from src.config import settings
 from src.ingestion.loaders import DocumentLoader
 from src.ingestion.splitter import DocumentSplitter
 from src.retrieval.vector_store import ChromaVectorStore
+from src.services.document_service import DocumentService
+from src.services.feedback_service import FeedbackService
+from src.services.ingestion_service import IngestionService
+from src.services.query_service import QueryService
 from src.utils.logger import get_logger
 
 logger = get_logger("api_routes")
@@ -24,12 +34,36 @@ _vector_store: Optional[ChromaVectorStore] = None
 
 
 def get_vector_store() -> ChromaVectorStore:
-    """Provides a lazy-loaded singleton ChromaVectorStore instance."""
+    """Dependency provider for ChromaVectorStore singleton."""
     global _vector_store
     if _vector_store is None:
         _vector_store = ChromaVectorStore()
     return _vector_store
 
+
+def get_query_service(store: ChromaVectorStore = Depends(get_vector_store)) -> QueryService:
+    """Dependency provider for QueryService."""
+    return QueryService(vector_store=store)
+
+
+def get_ingestion_service(store: ChromaVectorStore = Depends(get_vector_store)) -> IngestionService:
+    """Dependency provider for IngestionService."""
+    return IngestionService(vector_store=store)
+
+
+def get_document_service(store: ChromaVectorStore = Depends(get_vector_store)) -> DocumentService:
+    """Dependency provider for DocumentService."""
+    return DocumentService(vector_store=store)
+
+
+def get_feedback_service() -> FeedbackService:
+    """Dependency provider for FeedbackService."""
+    return FeedbackService()
+
+
+# ------------------------------------------------------------------------------
+# System Endpoints
+# ------------------------------------------------------------------------------
 
 @router.get(
     "/health",
@@ -54,9 +88,8 @@ async def health_check() -> HealthResponse:
     summary="System Information",
     tags=["System"],
 )
-async def system_info():
+async def system_info(store: ChromaVectorStore = Depends(get_vector_store)):
     """Returns runtime configuration, ingestion directories, chunking parameters, and vector store details."""
-    store = get_vector_store()
     return {
         "app_name": settings.APP_NAME,
         "environment": settings.APP_ENV,
@@ -72,15 +105,137 @@ async def system_info():
             "embedding_provider": settings.EMBEDDING_PROVIDER,
             "embedding_model": settings.GEMINI_EMBEDDING_MODEL,
         },
+        "llm_config": {
+            "llm_provider": settings.LLM_PROVIDER,
+            "llm_model": settings.GEMINI_LLM_MODEL,
+            "max_retries": settings.MAX_RETRIES,
+        },
         "phase_status": {
             "phase_1_project_setup": "completed",
             "phase_2_ingestion_and_chunking": "completed",
             "phase_3_vector_store_and_embeddings": "completed",
-            "phase_4_langgraph_workflow": "pending",
-            "phase_5_api_endpoints": "pending",
+            "phase_4_langgraph_workflow": "completed",
+            "phase_5_api_endpoints": "completed",
         },
     }
 
+
+# ------------------------------------------------------------------------------
+# Core Assignment Endpoints (POST /query, POST /ingest, GET /documents, POST /feedback)
+# Supported at both root and /api/v1/ prefixes for full compatibility.
+# ------------------------------------------------------------------------------
+
+@router.post(
+    "/api/v1/query",
+    response_model=QueryResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Submit Question (RAG Workflow)",
+    tags=["RAG Core"],
+)
+@router.post(
+    "/query",
+    response_model=QueryResponse,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+    tags=["RAG Core"],
+)
+async def query_technical_assistant(
+    request: QueryRequest,
+    service: QueryService = Depends(get_query_service),
+) -> QueryResponse:
+    """Executes the Self-Corrective LangGraph workflow to retrieve context and answer questions."""
+    try:
+        response = service.process_query(request)
+        return response
+    except Exception as e:
+        logger.error(f"Error executing RAG query: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while processing the query: {str(e)}",
+        )
+
+
+@router.post(
+    "/api/v1/ingest",
+    response_model=IngestUploadResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Ingest New Documents",
+    tags=["RAG Core"],
+)
+@router.post(
+    "/ingest",
+    response_model=IngestUploadResponse,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+    tags=["RAG Core"],
+)
+async def ingest_documents(
+    files: List[UploadFile] = File(..., description="Markdown (.md), Text (.txt), or HTML (.html) files"),
+    service: IngestionService = Depends(get_ingestion_service),
+) -> IngestUploadResponse:
+    """Accepts file uploads, validates and saves them, splits into chunks, and indexes them in ChromaDB."""
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No files provided for ingestion.",
+        )
+    result = await service.ingest_uploaded_files(files)
+    return result
+
+
+@router.get(
+    "/api/v1/documents",
+    response_model=DocumentListResponse,
+    status_code=status.HTTP_200_OK,
+    summary="List Indexed Documents",
+    tags=["RAG Core"],
+)
+@router.get(
+    "/documents",
+    response_model=DocumentListResponse,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+    tags=["RAG Core"],
+)
+async def list_indexed_documents(
+    service: DocumentService = Depends(get_document_service),
+) -> DocumentListResponse:
+    """Returns the catalog of all technical documents indexed in ChromaDB."""
+    return service.list_documents()
+
+
+@router.post(
+    "/api/v1/feedback",
+    response_model=FeedbackResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Submit User Feedback",
+    tags=["RAG Core"],
+)
+@router.post(
+    "/feedback",
+    response_model=FeedbackResponse,
+    status_code=status.HTTP_201_CREATED,
+    include_in_schema=False,
+    tags=["RAG Core"],
+)
+async def submit_feedback(
+    request: FeedbackRequest,
+    service: FeedbackService = Depends(get_feedback_service),
+) -> FeedbackResponse:
+    """Stores thumbs up/down user feedback persistently in SQLite."""
+    try:
+        return service.record_feedback(request)
+    except Exception as e:
+        logger.error(f"Error recording feedback: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to record feedback: {str(e)}",
+        )
+
+
+# ------------------------------------------------------------------------------
+# Ingestion Preview & Direct Vector Search Endpoints
+# ------------------------------------------------------------------------------
 
 @router.get(
     "/api/v1/ingest/preview",
@@ -100,9 +255,7 @@ async def preview_ingestion(
         default=5, ge=1, le=50, description="Number of sample chunks to return in preview"
     ),
 ) -> IngestionPreviewSummary:
-    """Scans the document corpus, loads Markdown/TXT/HTML files, splits them into chunks,
-    and returns an ingestion audit summary with metadata.
-    """
+    """Scans the document corpus on disk, splits into chunks, and returns an audit preview."""
     if chunk_overlap >= chunk_size:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -123,7 +276,7 @@ async def preview_ingestion(
     chunks = splitter.split_documents(docs)
 
     total_files = len(docs) + len(skipped)
-    summary = splitter.generate_summary(
+    return splitter.generate_summary(
         total_files_found=total_files,
         loaded_documents=docs,
         chunks=chunks,
@@ -131,51 +284,19 @@ async def preview_ingestion(
         preview_limit=preview_limit,
     )
 
-    return summary
-
-
-@router.post(
-    "/api/v1/ingest/index",
-    response_model=IndexingResult,
-    status_code=status.HTTP_200_OK,
-    summary="Index Corpus into ChromaDB",
-    tags=["Vector Store"],
-)
-async def index_documents(
-    chunk_size: int = Query(default=settings.CHUNK_SIZE, ge=100, le=4000),
-    chunk_overlap: int = Query(default=settings.CHUNK_OVERLAP, ge=0, le=1000),
-) -> IndexingResult:
-    """Loads all documents from disk, chunks them, and indexes them into ChromaDB.
-    Prevents duplicate re-indexing through deterministic chunk IDs and SHA256 content hashes.
-    """
-    doc_dir = Path(settings.DOCUMENTS_DIR)
-    if not doc_dir.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Documents directory '{doc_dir}' does not exist.",
-        )
-
-    loader = DocumentLoader()
-    docs, _ = loader.load_directory(doc_dir)
-
-    splitter = DocumentSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-    chunks = splitter.split_documents(docs)
-
-    store = get_vector_store()
-    result = store.index_chunks(chunks)
-    return result
-
 
 @router.post(
     "/api/v1/search",
     response_model=SearchResponse,
     status_code=status.HTTP_200_OK,
-    summary="Semantic Similarity Search",
+    summary="Direct Vector Search",
     tags=["Vector Store"],
 )
-async def semantic_search(request: SearchQueryRequest) -> SearchResponse:
-    """Retrieves top-k most semantically relevant document chunks from ChromaDB for a natural language query."""
-    store = get_vector_store()
+async def semantic_search(
+    request: SearchQueryRequest,
+    store: ChromaVectorStore = Depends(get_vector_store),
+) -> SearchResponse:
+    """Direct semantic similarity search on ChromaDB without running the full LangGraph workflow."""
     results = store.similarity_search(
         query=request.query,
         top_k=request.top_k,
@@ -195,13 +316,11 @@ async def semantic_search(request: SearchQueryRequest) -> SearchResponse:
     summary="Vector Store Statistics",
     tags=["Vector Store"],
 )
-async def store_stats() -> VectorStoreStats:
-    """Returns metadata about the active ChromaDB collection and indexed documents."""
-    store = get_vector_store()
-    indexed_docs = store.get_indexed_documents()
+async def store_stats(store: ChromaVectorStore = Depends(get_vector_store)) -> VectorStoreStats:
+    """Returns statistics about the active ChromaDB collection and indexed files."""
     return VectorStoreStats(
         collection_name=store.collection_name,
         total_chunks=store.collection.count(),
         persist_directory=str(store.persist_directory),
-        indexed_documents=indexed_docs,
+        indexed_documents=store.get_indexed_documents(),
     )
