@@ -1,10 +1,10 @@
 # Express Analytics | RAG-Based Technical Documentation Assistant
 
-An enterprise-ready Retrieval-Augmented Generation (RAG) system built with **LangGraph StateGraph**, **FastAPI**, **ChromaDB**, and **Google Gemini**, designed to ingest, index, grade, and answer questions about technical documentation with self-corrective capabilities.
+An enterprise-ready Retrieval-Augmented Generation (RAG) system built with **LangGraph StateGraph**, **FastAPI**, **ChromaDB**, **Google Gemini**, and a modern **Streamlit UI**, designed to ingest, index, grade, and answer questions about technical documentation with self-corrective capabilities.
 
 ---
 
-## Current Status: All Core Phases Completed (1 – 5)
+## Current Status: All Phases Completed (1 – 6)
 
 - **Phase 1: Project Setup & Architecture** (Completed)
   - Clean modular project layout, configuration management with `pydantic-settings` and `.env`.
@@ -39,7 +39,12 @@ An enterprise-ready Retrieval-Augmented Generation (RAG) system built with **Lan
   - **GET `/api/v1/documents`** (and `/documents`): Live catalog of indexed documents retrieved directly from ChromaDB with chunk counts, titles, formats, and characters.
   - **POST `/api/v1/feedback`** (and `/feedback`): Persistent user feedback collection (`thumbs_up` / `thumbs_down` + optional comments) stored in SQLite (`feedback.db`).
   - Decoupled service architecture (`src/services/` and `src/database/`) keeping route controllers thin.
-  - **45 Automated Unit & Integration Tests (100% Passing)** with zero-cost mocked LLMs.
+- **Phase 6: Modern Streamlit Frontend UI** (Completed)
+  - **💬 Chat Interface**: ChatGPT-inspired conversational workspace with Markdown rendering, citation chips, fallback warning banners, expandable execution traces, and thumbs up/down feedback.
+  - **📁 Document Explorer**: Live catalog of indexed technical documents in ChromaDB with total metrics, format badges, and search filtering.
+  - **📤 Document Ingestion**: Multi-file drag-and-drop uploader supporting `.md`, `.txt`, and `.html` with real-time indexing metrics and duplicate protection.
+  - **Centralized API Client**: Robust HTTP client with backend health checking, timeouts, and error handling.
+  - **52 Automated Unit & Integration Tests (100% Passing)**.
 
 ---
 
@@ -55,6 +60,7 @@ express-analytics-rag/
 ├── verify_ingestion.py           # CLI tool to verify Phase 1 & 2 loading & chunking
 ├── verify_vector_store.py        # CLI tool to verify Phase 3 indexing & retrieval
 ├── verify_workflow.py            # CLI tool to verify Phase 4 LangGraph self-corrective workflow
+├── verify_frontend.py            # CLI tool to verify Phase 6 Streamlit client & API integration
 │
 ├── chroma_db/                    # Persistent ChromaDB storage directory
 │
@@ -64,6 +70,11 @@ express-analytics-rag/
 │       ├── pydantic_validation.md    # Markdown document on Pydantic V2 models
 │       ├── python_typing_guide.txt   # Plain text guide on Python typing system
 │       └── langgraph_core_concepts.html # HTML document on LangGraph workflows
+│
+├── frontend/                     # Streamlit Frontend Application (Phase 6)
+│   ├── app.py                    # Main Streamlit dashboard (Chat, Explorer, Upload)
+│   ├── api_client.py             # Centralized HTTP API client for FastAPI
+│   └── requirements.txt          # Frontend dependencies (streamlit, requests)
 │
 ├── src/
 │   ├── __init__.py
@@ -114,9 +125,10 @@ express-analytics-rag/
 │       ├── __init__.py
 │       └── logger.py             # Centralized structured logger
 │
-└── tests/                        # Automated Pytest Suite (45 tests, 100% passing)
+└── tests/                        # Automated Pytest Suite (52 tests, 100% passing)
     ├── __init__.py
     ├── test_api.py               # Tests for all FastAPI endpoints (/query, /ingest, /documents, /feedback)
+    ├── test_api_client.py        # Tests for frontend API client methods
     ├── test_embeddings.py        # Tests for embedding generation and factory
     ├── test_feedback_db.py       # Tests for SQLite feedback schema and queries
     ├── test_graph_nodes.py       # Tests for each LangGraph node independently
@@ -182,7 +194,6 @@ Executes the LangGraph self-corrective RAG workflow.
 ```json
 {
   "question": "How do I validate models with Pydantic BaseModel?",
-  "top_k": 4,
   "max_retries": 2
 }
 ```
@@ -199,15 +210,11 @@ Executes the LangGraph self-corrective RAG workflow.
   "is_fallback": false,
   "retry_count": 0,
   "query_intent": "conceptual",
-  "execution_details": {
-    "search_query": "validate models with Pydantic BaseModel",
-    "relevant_chunks_count": 4,
-    "max_retries": 2
-  }
+  "search_query": "validate models with Pydantic BaseModel",
+  "retrieved_chunks_count": 4,
+  "relevant_chunks_count": 4
 }
 ```
-
-*When an off-topic question is asked, the pipeline executes self-correction (query rewriting), detects zero relevant technical context, and returns a safe fallback without hallucination (`is_fallback: true`, `citations: []`).*
 
 ---
 
@@ -221,11 +228,10 @@ Uploads Markdown (`.md`), Plain Text (`.txt`), or HTML (`.html`) files to the se
 {
   "uploaded_files": ["new_documentation.md"],
   "failed_files": [],
-  "chunks_indexed": 3,
-  "chunks_updated": 0,
-  "chunks_skipped_duplicate": 0,
-  "total_store_chunks": 15,
-  "message": "Ingestion completed: 1 uploaded, 0 failed, 3 chunks indexed."
+  "total_chunks_indexed": 3,
+  "total_chunks_updated": 0,
+  "total_chunks_skipped": 0,
+  "total_store_chunks": 15
 }
 ```
 
@@ -247,14 +253,6 @@ Inspects the persistent ChromaDB collection and returns metadata for all indexed
       "source_path": "data/documents/fastapi_overview.md",
       "chunk_count": 3,
       "total_characters": 2240
-    },
-    {
-      "source_filename": "pydantic_validation.md",
-      "document_title": "Pydantic V2 Data Validation Guide",
-      "file_type": ".md",
-      "source_path": "data/documents/pydantic_validation.md",
-      "chunk_count": 3,
-      "total_characters": 2180
     }
   ]
 }
@@ -277,25 +275,51 @@ Persists user ratings and qualitative feedback into an SQLite database (`feedbac
 **Response Body**:
 ```json
 {
-  "feedback_id": 1,
-  "query_id": "993fe01b-c744-4861-bbd4-539091bca72b",
-  "rating": "thumbs_up",
-  "comment": "Accurate response with correct citation of pydantic_validation.md.",
-  "created_at": "2026-10-30T17:55:00.123456",
-  "message": "Feedback submitted successfully."
+  "status": "success",
+  "message": "Feedback recorded successfully.",
+  "feedback": {
+    "id": 1,
+    "query_id": "993fe01b-c744-4861-bbd4-539091bca72b",
+    "rating": "thumbs_up",
+    "comment": "Accurate response with correct citation of pydantic_validation.md.",
+    "created_at": "2026-10-30T17:55:00.123456+00:00"
+  }
 }
 ```
+
+---
+
+## Phase 6 Streamlit UI Features
+
+The frontend application (`frontend/app.py`) provides:
+1. **💬 Conversational Chat Assistant**:
+   - ChatGPT-like interface with prompt suggestion chips.
+   - Grounded answers with clean Markdown formatting and code blocks.
+   - **Source Citations**: Distinctive badges showing exact source files cited (`fastapi_overview.md`, `pydantic_validation.md`, etc.).
+   - **Safe Fallback Indicator**: When the question is outside the corpus, triggers safe fallback notification without hallucinating.
+   - **Execution Details Expander**: Displays query intent, refined search query, number of retries, and graded relevant chunks.
+   - **Answer Feedback**: Integrated 👍 / 👎 buttons with an optional comment dialog persisting directly to SQLite.
+2. **📁 Document Explorer**:
+   - High-level metric cards: Total Documents, Total Chunks in ChromaDB, Vector Engine.
+   - Search filter to query documents by title or filename.
+   - Document cards displaying file format badges, chunk counts, character counts, and disk paths.
+3. **📤 Document Ingestion**:
+   - Drag-and-drop multi-file upload accepting `.md`, `.txt`, and `.html`.
+   - Real-time indexing statistics: uploaded count, newly indexed chunks, updated chunks, skipped duplicates.
+4. **Backend Health Indicator**:
+   - Sidebar badge displaying live connection status to FastAPI (`🟢 Backend Connected`).
 
 ---
 
 ## Installation & Setup
 
 ```bash
-# 1. Virtual Environment
+# 1. Activate virtual environment
 source .venv/bin/activate
 
 # 2. Dependencies installation
 pip install -r requirements.txt
+pip install -r frontend/requirements.txt
 
 # 3. Environment configuration
 cp .env.example .env
@@ -306,59 +330,41 @@ To connect to live Gemini 1.5 Flash and Gemini Embeddings, add your API key to `
 ```env
 GEMINI_API_KEY="your-gemini-api-key-here"
 ```
-*(If no API key is configured, the system automatically uses `MockChatModel` and `DeterministicTestEmbeddings`, enabling 100% of tests and verification scripts to execute offline in milliseconds).*
+*(If no API key is configured, the system automatically uses `MockChatModel` and `DeterministicTestEmbeddings`, enabling 100% of tests, UI verifications, and scripts to execute offline in milliseconds).*
 
 ---
 
-## Running the Application
+## How to Run the Applications
 
-### 1. Launch FastAPI Server
+### 1. Launch FastAPI Backend
+In your first terminal:
 ```bash
 uvicorn src.main:app --reload --port 8000
 ```
 - Interactive OpenAPI / Swagger UI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
-- Alternative ReDoc UI: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
 
-### 2. Sample cURL Commands
-
-**Query the assistant**:
+### 2. Launch Streamlit Frontend
+In your second terminal:
 ```bash
-curl -X POST "http://127.0.0.1:8000/api/v1/query" \
-     -H "Content-Type: application/json" \
-     -d '{"question": "How does FastAPI handle dependency injection?", "top_k": 3}'
+streamlit run frontend/app.py --server.port 8501
 ```
-
-**List indexed documents**:
-```bash
-curl -X GET "http://127.0.0.1:8000/api/v1/documents"
-```
-
-**Upload new document**:
-```bash
-curl -X POST "http://127.0.0.1:8000/api/v1/ingest" \
-     -F "files=@data/documents/fastapi_overview.md"
-```
-
-**Submit feedback**:
-```bash
-curl -X POST "http://127.0.0.1:8000/api/v1/feedback" \
-     -H "Content-Type: application/json" \
-     -d '{"query_id": "test-id-123", "rating": "thumbs_up", "comment": "Great answer!"}'
-```
+- Streamlit Web Dashboard: [http://localhost:8501](http://localhost:8501)
 
 ---
 
-## Verification & Execution
+## Verification & Automated Test Suites
 
-### 1. Run LangGraph Self-Corrective Workflow Verifier
+### 1. Run Complete Integration Verification Script
 ```bash
-python verify_workflow.py
+python verify_frontend.py
 ```
+*Automatically validates health check, document listing, technical Q&A, citations, safe fallback, feedback persistence, and file ingestion with cleanup.*
 
-### 2. Run Ingestion and Vector Store Verifiers
+### 2. Run Individual Phase Verifiers
 ```bash
-python verify_ingestion.py
-python verify_vector_store.py
+python verify_workflow.py       # Phase 4 LangGraph workflow verifier
+python verify_vector_store.py   # Phase 3 ChromaDB indexing & retrieval verifier
+python verify_ingestion.py      # Phase 2 document loader & chunker verifier
 ```
 
 ### 3. Run Automated Pytest Suite
@@ -366,55 +372,19 @@ python verify_vector_store.py
 pytest -v
 ```
 
-Expected output (`45 passed in ~1.3s`):
+Expected output (`52 passed in ~1.2s`):
 ```text
-tests/test_api.py::test_health_check_endpoint PASSED                     [  2%]
-tests/test_api.py::test_system_info_endpoint PASSED                      [  4%]
-tests/test_api.py::test_ingest_preview_endpoint PASSED                   [  6%]
-tests/test_api.py::test_ingest_preview_invalid_overlap PASSED            [  8%]
-tests/test_api.py::test_direct_search_and_stats_endpoints PASSED         [ 11%]
-tests/test_api.py::test_query_endpoint_success PASSED                    [ 13%]
-tests/test_api.py::test_query_endpoint_fallback_for_off_topic PASSED     [ 15%]
-tests/test_api.py::test_query_endpoint_empty_question PASSED             [ 17%]
-tests/test_api.py::test_upload_file_ingest_endpoint PASSED               [ 20%]
-tests/test_api.py::test_upload_file_unsupported_format PASSED            [ 22%]
-tests/test_api.py::test_documents_catalog_endpoint PASSED                [ 24%]
-tests/test_api.py::test_feedback_endpoint_success PASSED                 [ 26%]
-tests/test_api.py::test_feedback_endpoint_invalid_rating PASSED          [ 28%]
-tests/test_api.py::test_root_route_aliases PASSED                        [ 31%]
-tests/test_embeddings.py::test_deterministic_embeddings_properties PASSED [ 33%]
-tests/test_embeddings.py::test_deterministic_batch_embedding PASSED      [ 35%]
-tests/test_embeddings.py::test_get_embeddings_model_factory PASSED       [ 37%]
-tests/test_feedback_db.py::test_sqlite_feedback_db PASSED                [ 40%]
-tests/test_graph_nodes.py::test_query_analysis_node PASSED               [ 42%]
-tests/test_graph_nodes.py::test_retrieval_node PASSED                    [ 44%]
-tests/test_graph_nodes.py::test_document_grading_node PASSED             [ 46%]
-tests/test_graph_nodes.py::test_query_rewrite_node PASSED                [ 48%]
-tests/test_graph_nodes.py::test_generation_node_with_context PASSED      [ 51%]
-tests/test_graph_nodes.py::test_generation_node_fallback PASSED          [ 53%]
-tests/test_loaders.py::test_load_markdown_document PASSED                [ 55%]
-tests/test_loaders.py::test_load_text_document PASSED                    [ 57%]
-tests/test_loaders.py::test_load_html_document PASSED                    [ 60%]
-tests/test_loaders.py::test_load_empty_file PASSED                       [ 62%]
-tests/test_loaders.py::test_load_whitespace_only_file PASSED             [ 64%]
-tests/test_loaders.py::test_unsupported_file_format PASSED               [ 66%]
-tests/test_loaders.py::test_nonexistent_file PASSED                      [ 68%]
-tests/test_loaders.py::test_directory_batch_load PASSED                  [ 71%]
-tests/test_splitter.py::test_chunking_with_metadata PASSED               [ 73%]
-tests/test_splitter.py::test_chunk_size_and_overlap_validation PASSED    [ 75%]
-tests/test_splitter.py::test_batch_splitting PASSED                      [ 77%]
-tests/test_splitter.py::test_summary_generation PASSED                   [ 80%]
-tests/test_vector_store.py::test_chroma_indexing_and_duplicate_prevention PASSED [ 82%]
-tests/test_vector_store.py::test_chroma_update_modified_chunk PASSED     [ 84%]
-tests/test_vector_store.py::test_chroma_disk_persistence PASSED          [ 86%]
-tests/test_vector_store.py::test_chroma_similarity_search_and_metadata PASSED [ 88%]
-tests/test_vector_store.py::test_chroma_delete_document PASSED           [ 91%]
-tests/test_workflow.py::test_decide_to_generate_or_retry PASSED          [ 93%]
-tests/test_workflow.py::test_end_to_end_successful_rag_workflow PASSED   [ 95%]
-tests/test_workflow.py::test_end_to_end_irrelevant_query_self_correction PASSED [ 97%]
-tests/test_workflow.py::test_workflow_configurable_retry_limit PASSED    [100%]
+tests/test_api.py (14 tests: health, info, preview, search, /query, /ingest, /documents, /feedback)
+tests/test_api_client.py (7 tests: health, query, validation error, list docs, upload, feedback)
+tests/test_embeddings.py (3 tests: deterministic properties, batching, factory)
+tests/test_feedback_db.py (1 test: SQLite schema & feedback operations)
+tests/test_graph_nodes.py (6 tests: analysis, retrieval, grading, rewrite, generation)
+tests/test_loaders.py (8 tests: markdown, text, html, empty files, traversal, batch)
+tests/test_splitter.py (4 tests: recursive chunking, overlap, metadata integrity)
+tests/test_vector_store.py (5 tests: deduplication, upsert, persistence, similarity search)
+tests/test_workflow.py (4 tests: LangGraph routing, full RAG flow, CRAG self-correction)
 
-======================== 45 passed, 1 warning in 1.28s =========================
+======================== 52 passed, 1 warning in 1.12s =========================
 ```
 
 ---
@@ -439,4 +409,9 @@ tests/test_workflow.py::test_workflow_configurable_retry_limit PASSED    [100%]
 | POST `/ingest` Endpoint | `src/api/routes.py::post_ingest` & `src/services/ingestion_service.py` | ✅ Completed |
 | GET `/documents` Endpoint | `src/api/routes.py::get_documents` & `src/services/document_service.py` | ✅ Completed |
 | POST `/feedback` Endpoint | `src/api/routes.py::post_feedback` & `src/database/feedback_db.py` | ✅ Completed |
-| Comprehensive Unit & End-to-End Tests | `tests/` (45 automated tests) | ✅ Completed |
+| Streamlit Chat Interface | `frontend/app.py` (ChatGPT-like UI with citations & fallbacks) | ✅ Completed |
+| Streamlit Document Explorer | `frontend/app.py` (Catalog, chunk metrics & search filter) | ✅ Completed |
+| Streamlit Document Upload | `frontend/app.py` (Multi-file drag & drop, indexing summary) | ✅ Completed |
+| Streamlit Feedback Module | `frontend/app.py` (Thumbs up/down + SQLite persistence) | ✅ Completed |
+| Streamlit API Client | `frontend/api_client.py` (Centralized HTTP client with error handling) | ✅ Completed |
+| Comprehensive Unit & End-to-End Tests | `tests/` (52 automated tests, 100% passing) | ✅ Completed |
