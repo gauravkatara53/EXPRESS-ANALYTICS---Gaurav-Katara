@@ -1,0 +1,29 @@
+Python Typing and Type Hints Reference Guide
+
+1. Introduction to Type Annotations
+Python 3.5 introduced PEP 484 type hints, enabling static analysis, improved IDE autocompletion, and robust runtime data validation through libraries like Pydantic. Type hints do not enforce types at standard Python runtime by default, but act as contracts and documentation for developers and static type checkers like Mypy.
+
+2. Primitive and Container Types
+Standard Python primitives include int, str, float, bool, and bytes. Starting with Python 3.9 (PEP 585), built-in collections can be subscripted directly without importing them from the typing module:
+- list[str]: A list where each element is a string.
+- dict[str, int]: A dictionary mapping string keys to integer values.
+- set[float]: A set containing floating-point numbers.
+- tuple[str, int, bool]: A tuple containing exactly three elements of the specified types.
+
+3. Optional and Union Types
+When a variable or return value can hold one of several types:
+- Union[int, str] or the modern Python 3.10+ syntax int | str allows an argument to be either an integer or string.
+- Optional[str] or str | None indicates that a value can be a string or None. Always provide a default value of None when declaring optional keyword arguments.
+
+4. Generics and Type Variables
+TypeVar enables generic programming in Python:
+from typing import TypeVar, Generic, Sequence
+
+T = TypeVar("T")
+
+def first_item(items: Sequence[T]) -> T:
+    if not items:
+        raise IndexError("Sequence is empty")
+    return items[0]
+
+This guarantees that the return value matches the element type contained in the input sequence.

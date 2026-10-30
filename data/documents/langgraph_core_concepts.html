@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LangGraph Core Concepts and StateGraph Architecture</title>
+</head>
+<body>
+    <header>
+        <h1>LangGraph: Cyclical Multi-Agent Workflows</h1>
+    </header>
+    <main>
+        <section id="introduction">
+            <h2>Overview</h2>
+            <p>
+                LangGraph is an open-source framework by LangChain designed for creating controllable agent and multi-agent workflows.
+                Unlike standard Directed Acyclic Graphs (DAGs) found in traditional pipeline engines, LangGraph supports cyclical computations,
+                making it ideal for agentic loops, self-correcting RAG systems, human-in-the-loop workflows, and stateful memory.
+            </p>
+        </section>
+
+        <section id="stategraph">
+            <h2>State and StateGraph</h2>
+            <p>
+                The central abstraction in LangGraph is the <code>StateGraph</code>. Each workflow defines a shared state schema,
+                typically declared as a TypedDict or Pydantic model. As execution flows through the graph, nodes return dictionary updates
+                that modify or append to this central state using reducer functions like <code>operator.add</code>.
+            </p>
+        </section>
+
+        <section id="nodes-edges">
+            <h2>Nodes, Normal Edges, and Conditional Edges</h2>
+            <p>
+                Workflows in LangGraph consist of three main primitives:
+            </p>
+            <ul>
+                <li><strong>Nodes:</strong> Python functions or runnables that take the current graph state as input and return updated state attributes.</li>
+                <li><strong>Normal Edges:</strong> Direct deterministic transitions routing from one node straight to the next node.</li>
+                <li><strong>Conditional Edges:</strong> Routing functions that inspect the current graph state and determine which downstream node should execute next based on business logic, LLM decisions, or retry count thresholds.</li>
+            </ul>
+        </section>
+
+        <section id="crag-pattern">
+            <h2>Corrective RAG (CRAG) with LangGraph</h2>
+            <p>
+                In a Corrective RAG workflow, retrieved documents are graded by an evaluator node. If documents are deemed irrelevant,
+                a conditional edge routes the flow to a query rewriting node to re-retrieve with a modified query, rather than generating
+                a hallucinated or inaccurate response.
+            </p>
+        </section>
+    </main>
+</body>
+</html>
