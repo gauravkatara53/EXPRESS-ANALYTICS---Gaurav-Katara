@@ -6,138 +6,300 @@ from api_client import RAGApiClient
 
 
 # ------------------------------------------------------------------------------
-# Page Configuration & Modern Theme Styling
+# Page Configuration & Dark Mode AI SaaS Theme
 # ------------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Express Analytics | RAG Assistant",
+    page_title="Express Analytics | RAG Studio",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-# Custom light-mode modern CSS with subtle teal accents
-CUSTOM_CSS = """
+# Premium Dark Mode AI SaaS Stylesheet
+DARK_SAAS_CSS = """
 <style>
-    /* Global Styles */
+    /* Google Font Inter */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    /* Global App Base */
     .stApp {
-        background-color: #FAFAFB;
-        color: #1F2937;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: radial-gradient(circle at 50% 0%, #111A2E 0%, #090D16 75%, #06090F 100%) !important;
+        color: #E2E8F0 !important;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
     }
 
-    /* Headings */
+    /* Streamlit Main Container Spacing */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 3rem !important;
+        max-width: 1200px !important;
+    }
+
+    /* Headings with Subtle Glow */
     h1, h2, h3, h4 {
-        color: #111827 !important;
-        font-weight: 600 !important;
+        color: #F8FAFC !important;
+        font-family: 'Inter', sans-serif !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.025em !important;
+    }
+
+    /* Gradient Brand Title */
+    .brand-gradient-text {
+        background: linear-gradient(135deg, #2DD4BF 0%, #38BDF8 50%, #818CF8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 800;
+        font-size: 1.25rem;
         letter-spacing: -0.02em;
     }
 
-    /* Brand Header in Sidebar */
-    .brand-title {
-        font-size: 1.15rem;
-        font-weight: 700;
-        color: #0F172A;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 0.25rem;
+    /* Sidebar Customization */
+    [data-testid="stSidebar"] {
+        background-color: #0B101B !important;
+        border-right: 1px solid rgba(255, 255, 255, 0.07) !important;
     }
-    .brand-subtitle {
-        font-size: 0.78rem;
-        color: #64748B;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
+    [data-testid="stSidebar"] .block-container {
+        padding-top: 1.5rem !important;
+    }
+
+    /* Brand Header in Sidebar */
+    .brand-header-box {
+        padding: 0.75rem 0.5rem 1.25rem 0.5rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         margin-bottom: 1.25rem;
+    }
+    .brand-tagline {
+        font-size: 0.72rem;
+        color: #94A3B8;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-top: 0.2rem;
     }
 
     /* Status Badges */
     .badge-online {
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
-        background-color: #ECFDF5;
-        color: #065F46;
-        border: 1px solid #A7F3D0;
-        padding: 0.25rem 0.65rem;
+        gap: 0.45rem;
+        background: rgba(16, 185, 129, 0.12);
+        color: #34D399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        padding: 0.25rem 0.7rem;
         border-radius: 9999px;
         font-size: 0.75rem;
-        font-weight: 500;
+        font-weight: 600;
+        box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
     }
     .badge-offline {
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
-        background-color: #FEF2F2;
-        color: #991B1B;
-        border: 1px solid #FECACA;
-        padding: 0.25rem 0.65rem;
+        gap: 0.45rem;
+        background: rgba(239, 68, 68, 0.12);
+        color: #F87171;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+        padding: 0.25rem 0.7rem;
         border-radius: 9999px;
         font-size: 0.75rem;
-        font-weight: 500;
+        font-weight: 600;
+    }
+    .pulse-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background-color: #34D399;
+        box-shadow: 0 0 8px #34D399;
+        animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+        70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
     }
 
     /* Metric Cards */
-    .metric-card {
-        background-color: #FFFFFF;
-        border: 1px solid #E5E7EB;
-        border-radius: 0.5rem;
-        padding: 1rem 1.25rem;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+    .metric-card-dark {
+        background: linear-gradient(180deg, rgba(22, 32, 54, 0.7) 0%, rgba(15, 23, 42, 0.8) 100%);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.75rem;
+        padding: 1.25rem 1.5rem;
+        box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.4);
+        backdrop-filter: blur(8px);
+        transition: border-color 0.2s ease, transform 0.2s ease;
     }
-    .metric-title {
-        font-size: 0.8rem;
-        color: #6B7280;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        margin-bottom: 0.25rem;
+    .metric-card-dark:hover {
+        border-color: rgba(45, 212, 191, 0.4);
+        transform: translateY(-2px);
     }
-    .metric-value {
-        font-size: 1.6rem;
-        font-weight: 700;
-        color: #0F766E;
-    }
-
-    /* Citations Chip */
-    .citation-chip {
-        display: inline-block;
-        background-color: #F0FDFA;
-        color: #0F766E;
-        border: 1px solid #CCFBF1;
-        padding: 0.2rem 0.6rem;
-        border-radius: 0.375rem;
-        font-size: 0.78rem;
-        font-family: monospace;
-        margin-right: 0.4rem;
-        margin-top: 0.3rem;
-        font-weight: 500;
-    }
-
-    /* Fallback Warning Box */
-    .fallback-box {
-        background-color: #FFFBEB;
-        border-left: 4px solid #F59E0B;
-        padding: 0.75rem 1rem;
-        border-radius: 0.25rem;
-        color: #92400E;
-        font-size: 0.88rem;
-        margin-top: 0.5rem;
-        margin-bottom: 0.5rem;
-    }
-
-    /* Execution Details Pill */
-    .exec-pill {
-        display: inline-block;
-        background-color: #F1F5F9;
-        color: #475569;
-        padding: 0.15rem 0.5rem;
-        border-radius: 0.25rem;
+    .metric-label-dark {
         font-size: 0.75rem;
-        font-family: monospace;
-        margin-right: 0.5rem;
+        color: #94A3B8;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-weight: 600;
+        margin-bottom: 0.35rem;
+    }
+    .metric-val-dark {
+        font-size: 1.85rem;
+        font-weight: 800;
+        color: #2DD4BF;
+        letter-spacing: -0.03em;
+        font-feature-settings: "tnum";
+    }
+
+    /* Modern Document Card */
+    .doc-card-dark {
+        background: rgba(18, 26, 43, 0.7);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 0.75rem;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 0.85rem;
+        transition: all 0.2s ease;
+        backdrop-filter: blur(6px);
+    }
+    .doc-card-dark:hover {
+        border-color: rgba(45, 212, 191, 0.45);
+        background: rgba(22, 33, 56, 0.85);
+        box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Citation Badges */
+    .citation-chip-dark {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        background: rgba(45, 212, 191, 0.08);
+        color: #2DD4BF;
+        border: 1px solid rgba(45, 212, 191, 0.25);
+        padding: 0.25rem 0.65rem;
+        border-radius: 0.375rem;
+        font-size: 0.8rem;
+        font-family: 'JetBrains Mono', monospace;
+        margin-right: 0.4rem;
+        margin-top: 0.35rem;
+        font-weight: 500;
+        transition: all 0.15s ease;
+    }
+    .citation-chip-dark:hover {
+        background: rgba(45, 212, 191, 0.16);
+        border-color: rgba(45, 212, 191, 0.5);
+    }
+
+    /* Fallback Alert Box */
+    .fallback-box-dark {
+        background: rgba(245, 158, 11, 0.08);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        border-left: 4px solid #F59E0B;
+        padding: 0.85rem 1.15rem;
+        border-radius: 0.5rem;
+        color: #FCD34D;
+        font-size: 0.88rem;
+        margin-top: 0.65rem;
+        margin-bottom: 0.65rem;
+    }
+
+    /* Suggestion Chips */
+    .stButton>button {
+        background-color: rgba(255, 255, 255, 0.04) !important;
+        border: 1px solid rgba(255, 255, 255, 0.1) !important;
+        color: #E2E8F0 !important;
+        border-radius: 0.5rem !important;
+        font-weight: 500 !important;
+        font-size: 0.875rem !important;
+        transition: all 0.2s ease !important;
+    }
+    .stButton>button:hover {
+        border-color: #2DD4BF !important;
+        background-color: rgba(45, 212, 191, 0.1) !important;
+        color: #2DD4BF !important;
+        box-shadow: 0 0 16px rgba(45, 212, 191, 0.2) !important;
+    }
+
+    /* Primary Buttons */
+    .stButton>button[kind="primary"] {
+        background: linear-gradient(135deg, #0D9488 0%, #0891B2 100%) !important;
+        border: 1px solid rgba(45, 212, 191, 0.4) !important;
+        color: #FFFFFF !important;
+        font-weight: 600 !important;
+        box-shadow: 0 4px 14px rgba(13, 148, 136, 0.35) !important;
+    }
+    .stButton>button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #14B8A6 0%, #06B6D4 100%) !important;
+        box-shadow: 0 6px 20px rgba(20, 184, 166, 0.5) !important;
+        transform: translateY(-1px) !important;
+    }
+
+    /* Chat Messages */
+    [data-testid="stChatMessage"] {
+        background-color: transparent !important;
+        border: none !important;
+        padding: 0.75rem 0.5rem !important;
+    }
+
+    /* Expanders */
+    div[data-testid="stExpander"] {
+        background: rgba(18, 26, 43, 0.5) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 0.5rem !important;
+    }
+
+    /* Inputs */
+    .stTextInput>div>div>input {
+        background-color: rgba(15, 23, 42, 0.8) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+        color: #F8FAFC !important;
+        border-radius: 0.5rem !important;
+    }
+    .stTextInput>div>div>input:focus {
+        border-color: #2DD4BF !important;
+        box-shadow: 0 0 12px rgba(45, 212, 191, 0.3) !important;
+    }
+
+    /* Chat Input */
+    [data-testid="stChatInput"] textarea {
+        background-color: #0E1524 !important;
+        border: 1px solid rgba(255, 255, 255, 0.15) !important;
+        color: #F8FAFC !important;
+        border-radius: 0.75rem !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+    }
+    [data-testid="stChatInput"] textarea:focus {
+        border-color: #2DD4BF !important;
+        box-shadow: 0 0 16px rgba(45, 212, 191, 0.35) !important;
+    }
+
+    /* Monospace Code Styling */
+    code {
+        color: #38BDF8 !important;
+        background-color: rgba(15, 23, 42, 0.7) !important;
+        padding: 0.15rem 0.4rem !important;
+        border-radius: 0.25rem !important;
+        font-family: 'JetBrains Mono', monospace !important;
+        font-size: 0.85em !important;
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    }
+
+    /* Radio buttons in sidebar */
+    div[data-testid="stRadio"] > div {
+        background-color: transparent !important;
+        gap: 0.35rem !important;
+    }
+    div[data-testid="stRadio"] label {
+        background-color: rgba(255, 255, 255, 0.02) !important;
+        border: 1px solid rgba(255, 255, 255, 0.06) !important;
+        border-radius: 0.5rem !important;
+        padding: 0.45rem 0.85rem !important;
+        transition: all 0.15s ease !important;
+        color: #CBD5E1 !important;
+    }
+    div[data-testid="stRadio"] label:hover {
+        background-color: rgba(45, 212, 191, 0.08) !important;
+        border-color: rgba(45, 212, 191, 0.3) !important;
+        color: #2DD4BF !important;
     }
 </style>
 """
-st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+st.markdown(DARK_SAAS_CSS, unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------------------
@@ -163,49 +325,69 @@ if "prefill_question" not in st.session_state:
 
 
 # ------------------------------------------------------------------------------
-# Sidebar Navigation & System Status
+# Sidebar: Branding, System Health & Navigation
 # ------------------------------------------------------------------------------
 with st.sidebar:
-    st.markdown('<div class="brand-title">⚡ Express Analytics</div>', unsafe_allow_html=True)
-    st.markdown('<div class="brand-subtitle">RAG Technical Docs Assistant</div>', unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="brand-header-box">
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <span style="font-size: 1.4rem;">⚡</span>
+                <span class="brand-gradient-text">Express Analytics</span>
+            </div>
+            <div class="brand-tagline">AI/ML Documentation Assistant</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    # Health check
+    # Dynamic backend health check
     health_result = st.session_state.api_client.check_health()
     if health_result.get("healthy"):
         st.markdown(
-            '<div class="badge-online">🟢 Backend Connected (FastAPI)</div>',
+            """
+            <div class="badge-online">
+                <span class="pulse-dot"></span>
+                <span>FastAPI Service Online</span>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
     else:
         st.markdown(
-            '<div class="badge-offline">🔴 Backend Offline</div>',
+            """
+            <div class="badge-offline">
+                <span style="font-size: 0.8rem;">●</span>
+                <span>Backend Offline</span>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
-        st.caption(f"Server check error: {health_result.get('error', 'Unreachable')}")
-        if st.button("🔄 Retry Connection", key="retry_health"):
+        st.caption(f"Error: {health_result.get('error', 'Unreachable')}")
+        if st.button("🔄 Reconnect", key="retry_health"):
             st.session_state.api_client = RAGApiClient(base_url=st.session_state.api_url)
             st.rerun()
 
-    st.markdown("---")
+    st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
 
     # Navigation Menu
     nav_selection = st.radio(
-        "Navigation",
+        "Workspace Navigation",
         options=["💬 Chat Assistant", "📁 Document Explorer", "📤 Upload Documents"],
         label_visibility="collapsed",
     )
 
-    st.markdown("---")
+    st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
 
-    # Session Stats & Clear Action
-    st.markdown("### Workspace Tools")
-    if st.button("🗑️ Clear Conversation", use_container_width=True):
+    # Workspace Actions
+    st.markdown("<span style='font-size: 0.75rem; color: #64748B; font-weight: 600; text-transform: uppercase;'>Workspace Controls</span>", unsafe_allow_html=True)
+    if st.button("🗑️ Clear Session Chat", use_container_width=True):
         st.session_state.messages = []
         st.session_state.feedback_submitted = {}
         st.session_state.feedback_active_query = None
         st.rerun()
 
-    with st.expander("⚙️ Backend Settings"):
+    with st.expander("⚙️ Server Configuration"):
         custom_url = st.text_input(
             "API Base URL",
             value=st.session_state.api_url,
@@ -214,41 +396,51 @@ with st.sidebar:
         if custom_url != st.session_state.api_url:
             st.session_state.api_url = custom_url
             st.session_state.api_client = RAGApiClient(base_url=custom_url)
-            st.success("API Base URL updated!")
+            st.success("Target updated!")
             st.rerun()
 
-    st.caption("Powered by LangGraph, ChromaDB & Google Gemini")
+    st.markdown("<div style='margin-top: 2rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.06); font-size: 0.72rem; color: #64748B;'>Engineered with LangGraph StateGraph, ChromaDB & Google Gemini</div>", unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------------------
-# View 1: Chat Assistant
+# View 1: Chat Assistant (SaaS Dark Interface)
 # ------------------------------------------------------------------------------
 if nav_selection == "💬 Chat Assistant":
-    st.title("Technical Documentation Assistant")
-    st.caption(
-        "Ask questions about technical documents in your corpus (FastAPI, Pydantic, Python Typing, LangGraph). "
-        "The system uses self-corrective LangGraph workflows to retrieve, grade, and ground answers strictly in citations."
+    st.markdown(
+        """
+        <div style="margin-bottom: 1.5rem;">
+            <h1 style="margin-bottom: 0.25rem;">Technical Documentation Assistant</h1>
+            <p style="color: #94A3B8; font-size: 0.95rem; margin-top: 0;">
+                Ask technical questions about your documentation corpus. Built with self-corrective LangGraph workflows:
+                intent classification, semantic retrieval, relevance grading, and citation grounding.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     # Quick prompt suggestion chips if chat is empty
     if len(st.session_state.messages) == 0:
-        st.markdown("##### 💡 Suggested Questions")
+        st.markdown(
+            "<span style='font-size: 0.8rem; color: #64748B; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;'>Suggested Inquiries</span>",
+            unsafe_allow_html=True,
+        )
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("📌 How do I validate models in Pydantic?", use_container_width=True):
+            if st.button("⚡ How do I validate models with Pydantic BaseModel?", use_container_width=True):
                 st.session_state.prefill_question = "How do I validate models with Pydantic BaseModel?"
                 st.rerun()
-            if st.button("📌 How does FastAPI handle Dependency Injection?", use_container_width=True):
+            if st.button("⚡ How does FastAPI handle Dependency Injection with Depends?", use_container_width=True):
                 st.session_state.prefill_question = "How does FastAPI handle dependency injection with Depends?"
                 st.rerun()
         with col2:
-            if st.button("📌 What are StateGraph nodes and edges in LangGraph?", use_container_width=True):
+            if st.button("⚡ What are StateGraph, nodes, and cyclical edges in LangGraph?", use_container_width=True):
                 st.session_state.prefill_question = "What are the core concepts of StateGraph, nodes, and edges in LangGraph?"
                 st.rerun()
-            if st.button("🍪 Unrelated: What is a chocolate chip cookie recipe?", use_container_width=True):
+            if st.button("🍪 Unrelated Question: What is the recipe for chocolate chip cookies?", use_container_width=True):
                 st.session_state.prefill_question = "What is the secret recipe for baking chocolate chip cookies?"
                 st.rerun()
-        st.markdown("---")
+        st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
 
     # Render Conversation History
     for idx, msg in enumerate(st.session_state.messages):
@@ -257,15 +449,15 @@ if nav_selection == "💬 Chat Assistant":
             if role == "user":
                 st.markdown(f"**{msg['content']}**")
             else:
-                # Assistant message rendering
+                # Assistant message body
                 st.markdown(msg["content"])
 
-                # Fallback Notice
+                # Fallback Notice (if triggered)
                 if msg.get("is_fallback"):
                     st.markdown(
                         """
-                        <div class="fallback-box">
-                            <strong>⚠️ Context Insufficient:</strong> The indexed technical corpus does not contain sufficient details to answer this query safely without hallucinating.
+                        <div class="fallback-box-dark">
+                            <strong>⚠️ Safe Non-Hallucination Fallback:</strong> The indexed technical corpus does not contain sufficient details to answer this query safely. The pipeline self-corrected and verified zero relevant context.
                         </div>
                         """,
                         unsafe_allow_html=True,
@@ -274,13 +466,13 @@ if nav_selection == "💬 Chat Assistant":
                 # Source Citations
                 citations = msg.get("citations", [])
                 if citations:
-                    st.markdown("**📚 Sources cited:**")
-                    chips_html = "".join([f'<span class="citation-chip">📄 {c}</span>' for c in citations])
+                    st.markdown("<div style='margin-top: 0.6rem;'><strong style='color: #94A3B8; font-size: 0.85rem;'>📚 Source Documents Cited:</strong></div>", unsafe_allow_html=True)
+                    chips_html = "".join([f'<span class="citation-chip-dark">📄 {c}</span>' for c in citations])
                     st.markdown(chips_html, unsafe_allow_html=True)
 
                 # Execution Details Expander
                 query_id = msg.get("query_id")
-                with st.expander("🔍 Workflow Execution Details"):
+                with st.expander("🔍 Workflow Trace & Execution Details"):
                     st.markdown(f"**Query ID:** `{query_id or 'N/A'}`")
                     st.markdown(f"**Query Intent:** `{msg.get('query_intent', 'N/A')}`")
                     st.markdown(f"**Search Query Used:** `{msg.get('search_query', 'N/A')}`")
@@ -290,12 +482,11 @@ if nav_selection == "💬 Chat Assistant":
 
                 # Feedback Buttons
                 if query_id:
-                    feedback_key = f"fb_{query_id}"
                     submitted_record = st.session_state.feedback_submitted.get(query_id)
 
                     if submitted_record:
                         st.markdown(
-                            f"<small style='color: #059669;'>✅ Feedback recorded: <strong>{submitted_record.get('rating')}</strong></small>",
+                            f"<small style='color: #34D399; font-weight: 500;'>✅ Feedback saved: <strong>{submitted_record.get('rating')}</strong></small>",
                             unsafe_allow_html=True,
                         )
                     else:
@@ -316,11 +507,11 @@ if nav_selection == "💬 Chat Assistant":
                             with st.form(key=f"feedback_form_{query_id}"):
                                 st.caption(f"Submitting rating: **{rating_choice}**")
                                 comment_val = st.text_input(
-                                    "Optional comment:",
+                                    "Optional feedback comment:",
                                     placeholder="e.g. Accurate citation or missing detail...",
                                     key=f"comment_input_{query_id}",
                                 )
-                                submit_btn = st.form_submit_button("Send Feedback")
+                                submit_btn = st.form_submit_button("Submit Feedback", type="primary")
                                 if submit_btn:
                                     fb_resp = st.session_state.api_client.submit_feedback(
                                         query_id=query_id,
@@ -349,7 +540,6 @@ if nav_selection == "💬 Chat Assistant":
     active_prompt = user_input or default_prompt
 
     if active_prompt:
-        # Add user query to conversation history
         st.session_state.messages.append({"role": "user", "content": active_prompt})
 
         with st.chat_message("user", avatar="🧑‍💻"):
@@ -357,7 +547,7 @@ if nav_selection == "💬 Chat Assistant":
 
         # Call FastAPI backend with LangGraph workflow
         with st.chat_message("assistant", avatar="⚡"):
-            with st.spinner("Analyzing question, retrieving from ChromaDB, and grading relevance..."):
+            with st.spinner("Analyzing question, retrieving from ChromaDB, and grading relevance with LangGraph..."):
                 resp = st.session_state.api_client.query_assistant(question=active_prompt, max_retries=2)
 
             if resp.get("success"):
@@ -388,11 +578,20 @@ if nav_selection == "💬 Chat Assistant":
 
 
 # ------------------------------------------------------------------------------
-# View 2: Document Explorer
+# View 2: Document Explorer (Dark SaaS Cards & Filtering)
 # ------------------------------------------------------------------------------
 elif nav_selection == "📁 Document Explorer":
-    st.title("Document Corpus & Knowledge Store")
-    st.caption("Inspect documents indexed in the ChromaDB persistent vector database.")
+    st.markdown(
+        """
+        <div style="margin-bottom: 1.5rem;">
+            <h1 style="margin-bottom: 0.25rem;">Documentation Knowledge Base</h1>
+            <p style="color: #94A3B8; font-size: 0.95rem; margin-top: 0;">
+                Live inventory of technical documentation indexed in the ChromaDB persistent vector database.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # Refresh Button
     col_ref1, col_ref2 = st.columns([8, 2])
@@ -409,14 +608,14 @@ elif nav_selection == "📁 Document Explorer":
         total_chunks = data.get("total_chunks", 0)
         doc_list = data.get("documents", [])
 
-        # Metric Cards
+        # Metric Cards (Dark Mode SaaS Glassmorphism)
         m_col1, m_col2, m_col3 = st.columns(3)
         with m_col1:
             st.markdown(
                 f"""
-                <div class="metric-card">
-                    <div class="metric-title">Total Documents</div>
-                    <div class="metric-value">{total_docs}</div>
+                <div class="metric-card-dark">
+                    <div class="metric-label-dark">Indexed Documents</div>
+                    <div class="metric-val-dark">{total_docs}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -424,9 +623,9 @@ elif nav_selection == "📁 Document Explorer":
         with m_col2:
             st.markdown(
                 f"""
-                <div class="metric-card">
-                    <div class="metric-title">Total Vector Chunks</div>
-                    <div class="metric-value">{total_chunks}</div>
+                <div class="metric-card-dark">
+                    <div class="metric-label-dark">Total Vector Chunks</div>
+                    <div class="metric-val-dark">{total_chunks}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -434,27 +633,29 @@ elif nav_selection == "📁 Document Explorer":
         with m_col3:
             st.markdown(
                 """
-                <div class="metric-card">
-                    <div class="metric-title">Vector Database</div>
-                    <div class="metric-value" style="font-size: 1.25rem;">ChromaDB (Cosine)</div>
+                <div class="metric-card-dark">
+                    <div class="metric-label-dark">Vector Store Engine</div>
+                    <div class="metric-val-dark" style="font-size: 1.45rem;">ChromaDB <span style="font-size: 0.9rem; color: #94A3B8;">(Cosine)</span></div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
 
-        st.markdown("### Indexed Files")
+        st.markdown("<div style='height: 24px;'></div>", unsafe_allow_html=True)
+        st.markdown("### Document Inventory")
 
-        # Filter box
-        search_filter = st.text_input("🔍 Search document catalog by filename or title:", "")
+        # Search filter
+        search_filter = st.text_input("🔍 Filter catalog by title, filename, or extension:", "")
 
         filtered_docs = [
             d for d in doc_list
             if search_filter.lower() in d.get("source_filename", "").lower()
             or search_filter.lower() in d.get("document_title", "").lower()
+            or search_filter.lower() in d.get("file_type", "").lower()
         ]
 
         if not filtered_docs:
-            st.info("No documents found matching your filter.")
+            st.info("No documents found matching your filter criteria.")
         else:
             for d in filtered_docs:
                 filename = d.get("source_filename", "unnamed")
@@ -464,64 +665,80 @@ elif nav_selection == "📁 Document Explorer":
                 char_cnt = d.get("total_characters", 0)
                 source_path = d.get("source_path", "")
 
-                with st.container():
-                    st.markdown(
-                        f"""
-                        <div style="background-color: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 0.75rem;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <div>
-                                    <span style="font-weight: 600; font-size: 1.05rem; color: #111827;">{title}</span>
-                                    <span class="citation-chip" style="margin-left: 0.5rem;">{file_type}</span>
-                                </div>
-                                <span style="font-size: 0.82rem; color: #6B7280;">📁 <code>{source_path}</code></span>
+                # Badge colors based on file format
+                badge_style = (
+                    "background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3);"
+                    if file_type == ".md"
+                    else "background: rgba(56, 189, 248, 0.15); color: #38BDF8; border: 1px solid rgba(56, 189, 248, 0.3);"
+                    if file_type == ".html"
+                    else "background: rgba(168, 85, 247, 0.15); color: #C084FC; border: 1px solid rgba(168, 85, 247, 0.3);"
+                )
+
+                st.markdown(
+                    f"""
+                    <div class="doc-card-dark">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <span style="font-weight: 700; font-size: 1.1rem; color: #F8FAFC;">{title}</span>
+                                <span style="display: inline-block; padding: 0.15rem 0.55rem; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; margin-left: 0.5rem; {badge_style}">
+                                    {file_type.upper()}
+                                </span>
                             </div>
-                            <div style="margin-top: 0.5rem; display: flex; gap: 1.5rem; font-size: 0.85rem; color: #4B5563;">
-                                <span>📄 Filename: <code>{filename}</code></span>
-                                <span>🧩 Chunks: <strong>{chunk_cnt}</strong></span>
-                                <span>📝 Characters: <strong>{char_cnt:,}</strong></span>
-                            </div>
+                            <span style="font-size: 0.8rem; color: #64748B; font-family: monospace;">📁 {source_path}</span>
                         </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
+                        <div style="margin-top: 0.75rem; display: flex; gap: 1.75rem; font-size: 0.86rem; color: #94A3B8;">
+                            <span>📄 Source: <code style="color: #38BDF8;">{filename}</code></span>
+                            <span>🧩 Chunks: <strong style="color: #2DD4BF;">{chunk_cnt}</strong></span>
+                            <span>📝 Characters: <strong style="color: #E2E8F0;">{char_cnt:,}</strong></span>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
     else:
         st.error(f"Failed to load documents: {doc_resp.get('error')}")
 
 
 # ------------------------------------------------------------------------------
-# View 3: Upload Documents
+# View 3: Upload Documents (Drag & Drop Dark SaaS Ingestion)
 # ------------------------------------------------------------------------------
 elif nav_selection == "📤 Upload Documents":
-    st.title("Upload & Ingest Documentation")
-    st.caption(
-        "Upload new Markdown (.md), Plain Text (.txt), or HTML (.html) technical files. "
-        "The system will automatically extract document titles, split them into semantic chunks with 150-char overlap, "
-        "generate vector embeddings, and store them in ChromaDB with duplicate protection."
+    st.markdown(
+        """
+        <div style="margin-bottom: 1.5rem;">
+            <h1 style="margin-bottom: 0.25rem;">Upload & Ingest Documentation</h1>
+            <p style="color: #94A3B8; font-size: 0.95rem; margin-top: 0;">
+                Expand the RAG knowledge base with new technical guides. Upload Markdown (<code>.md</code>),
+                Plain Text (<code>.txt</code>), or HTML (<code>.html</code>) files for automatic semantic chunking,
+                vector embedding, and duplicate-safe ChromaDB indexing.
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
     uploaded_files = st.file_uploader(
-        "Choose technical documentation files",
+        "Drop documentation files here",
         type=["md", "txt", "html"],
         accept_multiple_files=True,
         help="Upload Markdown (.md), Text (.txt), or HTML (.html) files.",
     )
 
     if uploaded_files:
-        st.markdown(f"**Selected {len(uploaded_files)} file(s):**")
+        st.markdown(f"**Selected {len(uploaded_files)} file(s) for ingestion:**")
         for f in uploaded_files:
-            st.markdown(f"- 📄 `{f.name}` ({len(f.getvalue()):,} bytes)")
+            st.markdown(f"- 📄 `{f.name}` <span style='color: #64748B;'>({len(f.getvalue()):,} bytes)</span>", unsafe_allow_html=True)
 
-        if st.button("🚀 Process & Ingest Files", type="primary"):
-            # Prepare files for multipart upload
+        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
+        if st.button("🚀 Process & Ingest Into Vector Store", type="primary"):
             prepared = []
             for f in uploaded_files:
                 file_bytes = f.getvalue()
-                # Guess content type
                 ext = os.path.splitext(f.name)[1].lower()
                 ctype = "text/markdown" if ext == ".md" else "text/html" if ext == ".html" else "text/plain"
                 prepared.append((f.name, file_bytes, ctype))
 
-            with st.spinner("Ingesting, chunking, and indexing into ChromaDB..."):
+            with st.spinner("Ingesting, generating semantic chunks, and indexing into ChromaDB..."):
                 ingest_resp = st.session_state.api_client.upload_documents(prepared)
 
             if ingest_resp.get("success"):

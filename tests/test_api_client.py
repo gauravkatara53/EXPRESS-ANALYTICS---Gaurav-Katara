@@ -128,3 +128,4 @@ def test_api_client_submit_feedback():
     )
     assert res["success"] is True
     assert res["data"]["feedback"]["rating"] == "thumbs_up"
+
