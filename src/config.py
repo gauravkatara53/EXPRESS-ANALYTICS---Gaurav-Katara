@@ -1,5 +1,6 @@
 import os
 from pathlib import Path
+from typing import Optional
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -27,9 +28,25 @@ class Settings(BaseSettings):
     CHUNK_SIZE: int = 800
     CHUNK_OVERLAP: int = 150
 
-    # Reserved future settings (Phases 3+)
-    LLM_PROVIDER: str = "groq"
-    VECTOR_STORE: str = "chroma"
+    # ChromaDB Vector Store settings
+    CHROMA_PERSIST_DIRECTORY: Path = Field(
+        default_factory=lambda: Path(os.getenv("CHROMA_PERSIST_DIRECTORY", "chroma_db"))
+    )
+    CHROMA_COLLECTION_NAME: str = "technical_documentation"
+
+    # Embedding Model settings
+    EMBEDDING_PROVIDER: str = "gemini"  # "gemini" or "mock"
+    GEMINI_EMBEDDING_MODEL: str = "models/text-embedding-004"
+    GEMINI_API_KEY: Optional[str] = None
+    GOOGLE_API_KEY: Optional[str] = None
+
+    # Retrieval settings
+    DEFAULT_TOP_K: int = 4
+    SIMILARITY_SCORE_THRESHOLD: Optional[float] = 0.0
+
+    # Reserved future LLM settings (Phase 4)
+    LLM_PROVIDER: str = "google"
+    LLM_MODEL: str = "gemini-1.5-flash"
 
 
 settings = Settings()

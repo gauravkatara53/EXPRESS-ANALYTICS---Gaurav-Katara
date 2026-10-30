@@ -45,3 +45,4 @@ Pydantic V2 separates validation from serialization. You can serialize models in
 - `model.model_dump_json()`: Serializes model instances directly into JSON strings.
 - `model.model_validate(raw_data)`: Validates raw dictionary data into a typed model instance.
 - `model.model_validate_json(json_str)`: Parses and validates a JSON string directly without intermediate python dictionary allocation.
+

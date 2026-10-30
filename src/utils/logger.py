@@ -27,3 +27,4 @@ def get_logger(name: Optional[str] = "rag_assistant") -> logging.Logger:
         logger.propagate = False
 
     return logger
+

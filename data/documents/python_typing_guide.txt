@@ -27,3 +27,4 @@ def first_item(items: Sequence[T]) -> T:
     return items[0]
 
 This guarantees that the return value matches the element type contained in the input sequence.
+

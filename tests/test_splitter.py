@@ -83,3 +83,4 @@ def test_summary_generation(sample_document: LoadedDocument):
     assert summary.total_chunks_created == len(chunks)
     assert summary.average_chunk_length > 0
     assert len(summary.chunks_preview) <= 2
+

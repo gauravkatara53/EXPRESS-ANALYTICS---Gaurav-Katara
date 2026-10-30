@@ -27,3 +27,4 @@ htmlcov/
 # Vector store & persist directories (for future phases)
 chroma_db/
 vector_store/
+

@@ -117,3 +117,4 @@ class DocumentSplitter:
             documents=loaded_documents,
             chunks_preview=chunks[:preview_limit],
         )
+

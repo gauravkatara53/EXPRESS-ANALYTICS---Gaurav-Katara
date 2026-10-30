@@ -50,3 +50,4 @@ async def read_items(commons: dict = Depends(common_parameters)):
 FastAPI supports both `async def` and regular `def` endpoint functions:
 - If your endpoint calls non-blocking async code (such as `httpx` or an async database driver like `asyncpg`), declare it with `async def`.
 - If your endpoint uses blocking synchronous libraries (such as `requests` or synchronous `psycopg2`), declare it with standard `def`. FastAPI runs standard `def` functions in an external threadpool to prevent blocking the event loop.
+

@@ -114,3 +114,4 @@ def test_directory_batch_load(tmp_path: Path):
     assert "Doc 1" in doc_titles
     assert "Doc 2 Title" in doc_titles
     assert "Doc 3" in doc_titles
+
