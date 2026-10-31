@@ -492,7 +492,9 @@ st.markdown(DARK_SAAS_CSS, unsafe_allow_html=True)
 
 # Session state initialization
 if "api_url" not in st.session_state:
-    st.session_state.api_url = os.getenv("API_BASE_URL", "http://localhost:8000")
+    st.session_state.api_url = os.getenv(
+        "API_BASE_URL", "https://express-analytics-gaurav-katara.onrender.com"
+    )
 
 if "api_client" not in st.session_state:
     st.session_state.api_client = RAGApiClient(base_url=st.session_state.api_url)

@@ -12,7 +12,9 @@ class RAGApiClient:
         timeout: float = 60.0,
         session: Optional[requests.Session] = None,
     ):
-        raw_url = base_url or os.getenv("API_BASE_URL", "http://localhost:8000")
+        raw_url = base_url or os.getenv(
+            "API_BASE_URL", "https://express-analytics-gaurav-katara.onrender.com"
+        )
         self.base_url = raw_url.rstrip("/")
         self.timeout = timeout
         self.session = session or requests.Session()
