@@ -4,7 +4,12 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from src.api.schemas import SearchResult
 from src.config import settings
-from src.graph.state import DocumentGradeOutput, GraphState, QueryAnalysisOutput
+from src.graph.state import (
+    BatchDocumentGradeOutput,
+    DocumentGradeOutput,
+    GraphState,
+    QueryAnalysisOutput,
+)
 from src.llm.models import get_llm
 from src.retrieval.vector_store import ChromaVectorStore
 from src.utils.logger import get_logger
@@ -72,44 +77,64 @@ class RAGNodes:
         }
 
     def document_grading_node(self, state: GraphState) -> Dict[str, Any]:
-        """Node 3: Evaluates retrieved chunks for relevance to the question (Self-Corrective RAG)."""
+        """Node 3: Evaluates retrieved chunks for relevance to the question (Self-Corrective RAG).
+
+        Uses single-pass multi-document relevance evaluation for high throughput and zero rate-limiting.
+        """
         question = state.get("question", "")
         documents = state.get("documents", [])
         logger.info(f"--- [Node: Document Grading] Grading {len(documents)} retrieved chunks ---")
 
+        if not documents:
+            logger.warning("No documents retrieved to grade.")
+            return {"relevant_documents": []}
+
         system_prompt = (
             "You are a strict technical documentation relevance evaluator. "
-            "Evaluate whether the retrieved documentation chunk contains context relevant to "
-            "answering the user's question. If the document contains any relevant information, concepts, "
-            "or code examples that help answer the question, grade it as relevant ('is_relevant': True). "
-            "Otherwise, grade it as irrelevant ('is_relevant': False)."
+            "Given the user's question and a set of candidate document chunks numbered [Chunk 1], [Chunk 2], etc., "
+            "determine which chunk indices contain information, concepts, or code relevant to answering the question. "
+            "Return the 1-based indices in 'relevant_indices' (e.g. [1, 3]), or an empty list [] if none are relevant. "
+            "Provide a concise explanation in 'reasoning'."
         )
 
-        structured_grader = self.llm.with_structured_output(DocumentGradeOutput)
-        relevant_docs: List[SearchResult] = []
+        chunks_text = "\n\n".join(
+            f"--- [Chunk {idx}] (from {doc.metadata.source_filename}) ---\n{doc.content}"
+            for idx, doc in enumerate(documents, 1)
+        )
+        user_prompt = (
+            f"User Question: {question}\n\n"
+            f"Candidate Document Chunks:\n{chunks_text}\n\n"
+            "Evaluate each chunk and return the list of relevant chunk numbers in 'relevant_indices'."
+        )
 
-        for idx, doc in enumerate(documents, 1):
-            user_prompt = (
-                f"User Question: {question}\n\n"
-                f"Document Chunk (from {doc.metadata.source_filename}):\n"
-                f"{doc.content}"
+        relevant_docs: List[SearchResult] = []
+        try:
+            structured_grader = self.llm.with_structured_output(BatchDocumentGradeOutput)
+            grade: BatchDocumentGradeOutput = structured_grader.invoke(
+                [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
             )
-            try:
-                grade: DocumentGradeOutput = structured_grader.invoke(
-                    [SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)]
-                )
-                if grade.is_relevant:
-                    logger.info(
-                        f"Chunk #{idx} ({doc.metadata.source_filename}) -> RELEVANT: {grade.reasoning}"
-                    )
+            rel_indices = set(grade.relevant_indices or [])
+            for idx, doc in enumerate(documents, 1):
+                if idx in rel_indices:
+                    logger.info(f"Chunk #{idx} ({doc.metadata.source_filename}) -> RELEVANT")
                     relevant_docs.append(doc)
                 else:
-                    logger.info(
-                        f"Chunk #{idx} ({doc.metadata.source_filename}) -> IRRELEVANT: {grade.reasoning}"
+                    logger.info(f"Chunk #{idx} ({doc.metadata.source_filename}) -> IRRELEVANT")
+            logger.info(f"Grading verdict: {len(relevant_docs)}/{len(documents)} relevant ({grade.reasoning})")
+        except Exception as e:
+            logger.warning(f"Single-pass grading failed ({e}). Falling back to per-chunk grading.")
+            try:
+                per_chunk_grader = self.llm.with_structured_output(DocumentGradeOutput)
+                for idx, doc in enumerate(documents, 1):
+                    item_prompt = f"User Question: {question}\n\nDocument Chunk ({doc.metadata.source_filename}):\n{doc.content}"
+                    single_grade: DocumentGradeOutput = per_chunk_grader.invoke(
+                        [SystemMessage(content="Grade if chunk contains relevant context."), HumanMessage(content=item_prompt)]
                     )
-            except Exception as e:
-                logger.warning(f"Grading chunk #{idx} failed ({e}). Defaulting to retaining chunk.")
-                relevant_docs.append(doc)
+                    if single_grade.is_relevant:
+                        relevant_docs.append(doc)
+            except Exception as inner_e:
+                logger.warning(f"Per-chunk fallback also failed ({inner_e}). Retaining all chunks safely.")
+                relevant_docs = list(documents)
 
         logger.info(
             f"Grading complete: {len(relevant_docs)} of {len(documents)} chunks marked relevant."

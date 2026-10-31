@@ -9,7 +9,7 @@ class RAGApiClient:
     def __init__(
         self,
         base_url: Optional[str] = None,
-        timeout: float = 30.0,
+        timeout: float = 60.0,
         session: Optional[requests.Session] = None,
     ):
         raw_url = base_url or os.getenv("API_BASE_URL", "http://localhost:8000")
@@ -33,7 +33,7 @@ class RAGApiClient:
         except Exception as e:
             return {"healthy": False, "error": str(e)}
 
-    def query_assistant(self, question: str, max_retries: int = 2) -> Dict[str, Any]:
+    def query_assistant(self, question: str, max_retries: int = 1) -> Dict[str, Any]:
         """Submits a natural language technical question to the LangGraph pipeline.
 
         Connects to: POST /api/v1/query

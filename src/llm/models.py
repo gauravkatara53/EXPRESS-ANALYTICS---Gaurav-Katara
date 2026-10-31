@@ -134,7 +134,36 @@ class MockChatModel(BaseChatModel):
                 clean_search = re.sub(r"[?!.,]", "", raw_q).strip()
                 return schema(intent=intent, search_query=clean_search)
 
-            # 2. Document Grade Output
+            # 2. Batch Document Grade Output (Single-Pass Multi-Document Grading)
+            elif "batchdocumentgrade" in schema_name:
+                q_match = re.search(
+                    r"User Question:\s*(.+?)(?:\n\nCandidate Document Chunks|\Z)",
+                    user_msg,
+                    re.DOTALL | re.IGNORECASE,
+                )
+                q_text = q_match.group(1).lower() if q_match else ""
+                q_tokens = {t for t in re.findall(r"\b[a-z]{3,}\b", q_text) if t not in STOP_WORDS}
+
+                chunk_blocks = re.findall(
+                    r"---\s*\[Chunk\s*(\d+)\][^\n]*\s*---\n([\s\S]+?)(?=\n\n---\s*\[Chunk|\Z)",
+                    user_msg,
+                )
+                rel_indices = []
+                for num_str, chunk_content in chunk_blocks:
+                    c_tokens = {
+                        t
+                        for t in re.findall(r"\b[a-z]{3,}\b", chunk_content.lower())
+                        if t not in STOP_WORDS
+                    }
+                    if q_tokens.intersection(c_tokens) and "irrelevant" not in chunk_content.lower():
+                        rel_indices.append(int(num_str))
+
+                return schema(
+                    relevant_indices=rel_indices,
+                    reasoning=f"Identified {len(rel_indices)} relevant chunks for question.",
+                )
+
+            # 3. Document Grade Output (Per-Chunk Grading)
             elif "documentgrade" in schema_name or "grade" in schema_name:
                 q_match = re.search(r"User Question:\s*(.+?)(?:\n\nDocument Chunk|\Z)", user_msg, re.DOTALL | re.IGNORECASE)
                 c_match = re.search(r"Document Chunk.*:\s*([\s\S]+)", user_msg, re.IGNORECASE)

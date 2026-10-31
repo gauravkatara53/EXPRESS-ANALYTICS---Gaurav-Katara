@@ -26,6 +26,19 @@ class DocumentGradeOutput(BaseModel):
     )
 
 
+class BatchDocumentGradeOutput(BaseModel):
+    """Pydantic schema for high-throughput single-pass multi-document relevance evaluation."""
+
+    relevant_indices: List[int] = Field(
+        default_factory=list,
+        description="1-based integer indices of the document chunks that contain relevant context for answering the question. Empty list if none are relevant.",
+    )
+    reasoning: str = Field(
+        default="",
+        description="Brief explanation of why the selected chunks are relevant, or why none are relevant.",
+    )
+
+
 class GraphState(TypedDict):
     """The central state passed between nodes in the LangGraph Self-Corrective RAG workflow."""
 
