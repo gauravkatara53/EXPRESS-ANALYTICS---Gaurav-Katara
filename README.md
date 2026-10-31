@@ -1,246 +1,357 @@
-# Express Analytics | RAG-Based Technical Documentation Assistant
+# Technical Documentation Assistant (Self-Corrective RAG)
 
-An enterprise-ready Retrieval-Augmented Generation (RAG) system built with **LangGraph StateGraph**, **FastAPI**, **ChromaDB**, **Google Gemini**, and a modern **Streamlit UI**, designed to ingest, index, grade, and answer questions about technical documentation with self-corrective capabilities.
-
----
-
-## Current Status: All Phases Completed (1 – 6)
-
-- **Phase 1: Project Setup & Architecture** (Completed)
-  - Clean modular project layout, configuration management with `pydantic-settings` and `.env`.
-  - FastAPI application skeleton with healthcheck, CORS, lifecycle hooks, and structured logging.
-- **Phase 2: Document Ingestion & Chunking** (Completed)
-  - Multi-format ingestion support: **Markdown (`.md`)**, **Plain Text (`.txt`)**, and **HTML (`.html`)**.
-  - Hierarchical semantic chunking with `RecursiveCharacterTextSplitter` (chunk size: 800 chars, overlap: 150 chars).
-  - Rich metadata tracking (filename, document title, relative path, chunk index, total chunks, character count).
-  - Production-grade error handling (empty files, whitespace-only files, unsupported formats, encoding fallbacks).
-  - 4 sample technical documentation files.
-- **Phase 3: Embeddings & ChromaDB Vector Store** (Completed)
-  - **ChromaDB** integrated as a persistent local vector database (`chroma_db/`).
-  - **Google Gemini Embedding Model** integration (`models/text-embedding-004`) via `langchain-google-genai`.
-  - **Deterministic/Offline Embedding Provider** for millisecond CI execution and tests without API keys.
-  - **Duplicate Indexing Prevention**: Computes deterministic chunk IDs (`filename#chunk_index`) and SHA256 content hashes to skip duplicate chunks on repeated runs.
-  - **Document Updates & Deletions**: Detects modified chunks and updates them in ChromaDB (`collection.upsert`).
-  - **Semantic Similarity Search**: Cosine similarity retrieval with configurable `top_k` and `score_threshold` filtering.
-- **Phase 4: Self-Corrective LangGraph Workflow** (Completed)
-  - **LangGraph StateGraph** self-corrective cyclical workflow with 5 dedicated nodes:
-    1. `query_analysis`: Intent classification and search query expansion.
-    2. `retrieve`: Semantic search over ChromaDB chunks with metadata.
-    3. `grade_documents`: Self-corrective CRAG evaluator grading chunks as relevant/irrelevant.
-    4. `rewrite_query`: Query optimizer adding technical synonyms when retrieval fails.
-    5. `generate`: Grounded answer generation strictly from verified context with citations.
-  - **Conditional Routing**:
-    - Relevant documents found $\rightarrow$ proceed to `generate`.
-    - No relevant documents & retries left $\rightarrow$ route to `rewrite_query` $\rightarrow$ re-retrieve.
-    - No relevant documents & retry limit reached $\rightarrow$ proceed to `generate` (safe fallback without hallucination).
-- **Phase 5: FastAPI Production Endpoints & Feedback Persistence** (Completed)
-  - **POST `/api/v1/query`** (and `/query`): Executes the full LangGraph pipeline; returns grounded answer, citations, retry count, and fallback status.
-  - **POST `/api/v1/ingest`** (and `/ingest`): Multi-file upload (`.md`, `.txt`, `.html`) with traversal sanitization, chunking, deduplicated ChromaDB indexing, and summary metrics.
-  - **GET `/api/v1/documents`** (and `/documents`): Live catalog of indexed documents retrieved directly from ChromaDB with chunk counts, titles, formats, and characters.
-  - **POST `/api/v1/feedback`** (and `/feedback`): Persistent user feedback collection (`thumbs_up` / `thumbs_down` + optional comments) stored in SQLite (`feedback.db`).
-  - Decoupled service architecture (`src/services/` and `src/database/`) keeping route controllers thin.
-- **Phase 6: Modern Streamlit Frontend UI** (Completed)
-  - **💬 Chat Interface**: ChatGPT-inspired conversational workspace with Markdown rendering, citation chips, fallback warning banners, expandable execution traces, and thumbs up/down feedback.
-  - **📁 Document Explorer**: Live catalog of indexed technical documents in ChromaDB with total metrics, format badges, and search filtering.
-  - **📤 Document Ingestion**: Multi-file drag-and-drop uploader supporting `.md`, `.txt`, and `.html` with real-time indexing metrics and duplicate protection.
-  - **Centralized API Client**: Robust HTTP client with backend health checking, timeouts, and error handling.
-  - **52 Automated Unit & Integration Tests (100% Passing)**.
+A robust Retrieval-Augmented Generation (RAG) system built with **FastAPI**, **LangGraph**, **ChromaDB**, and **Streamlit**. Designed to ingest technical documentation (Markdown, Text, HTML, URLs), index it in a persistent vector database, grade retrieved chunks for relevance, self-correct query phrasing when retrieval fails, and generate accurate, cited answers with zero-hallucination fallbacks.
 
 ---
 
-## Project Structure
+## Table of Contents
+
+- [Overview](#overview)
+- [Key Capabilities](#key-capabilities)
+- [System Architecture](#system-architecture)
+- [LangGraph Workflow](#langgraph-workflow)
+- [Tech Stack](#tech-stack)
+- [Quickstart Guide](#quickstart-guide)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Configuration](#configuration)
+  - [Running the Services](#running-the-services)
+- [API Reference & Examples](#api-reference--examples)
+  - [1. Query Assistant (`POST /api/v1/query`)](#1-query-assistant-post-apiv1query)
+  - [2. Ingest Files (`POST /api/v1/ingest`)](#2-ingest-files-post-apiv1ingest)
+  - [3. Ingest URLs (`POST /api/v1/ingest/url`)](#3-ingest-urls-post-apiv1ingesturl)
+  - [4. List Documents (`GET /api/v1/documents`)](#4-list-documents-get-apiv1documents)
+  - [5. Submit Feedback (`POST /api/v1/feedback`)](#5-submit-feedback-post-apiv1feedback)
+- [Frontend Interface](#frontend-interface)
+- [Engineering Decisions & Design Trade-offs](#engineering-decisions--design-trade-offs)
+- [Project Structure](#project-structure)
+- [Testing & Verification](#testing--verification)
+
+---
+
+## Overview
+
+Standard naive RAG systems pull the top-$k$ nearest chunks from a vector store and blindly feed them into an LLM prompt. In technical domains, this leads to two frequent failure modes:
+
+1. **Retrieval Noise**: Unrelated paragraphs with surface keyword overlap dilute the prompt context, causing the LLM to generate generic or partially incorrect technical advice.
+2. **Hallucination on Out-of-Scope Queries**: If the documentation does not contain the answer, naive pipelines fabricate plausible-looking syntax, invalid flags, or non-existent APIs.
+
+This project implements **Self-Corrective RAG (CRAG)** to solve these failure modes:
+
+- Incoming queries are analyzed to classify intent and expand keywords.
+- Retrieved chunks are evaluated by a dedicated relevance grader before generation.
+- If chunks are irrelevant, a conditional edge loops back to reformulate the query with technical synonyms and re-retrieve.
+- If repeated retrieval attempts fail to surface relevant material, the pipeline safely refuses to answer rather than hallucinating.
+- Every generated answer explicitly cites the source filenames it drew from.
+
+---
+
+## Key Capabilities
+
+- **Cyclic LangGraph Workflow**: StateGraph architecture coordinating query analysis, retrieval, document grading, query rewriting, and grounded generation with bounded retries.
+- **Multi-Format Ingestion**: Supports Markdown (`.md`), plain text (`.txt`), and HTML (`.html`) files with automated script/navigation stripping and title extraction.
+- **URL Documentation Scraping**: Direct ingestion of online technical guides and API documentation via URL endpoints.
+- **Deduplicated Vector Storage**: Persistent ChromaDB store using SHA-256 chunk content hashing to prevent duplicate embeddings on repeated indexing runs.
+- **Dual-Model Support**: Connects to live cloud models (Google Gemini or Groq LPUs) with an automated fallback to offline deterministic models for local runs and CI test suites without API keys.
+- **Relational Feedback Loop**: SQLite database tracking user feedback (`thumbs_up` / `thumbs_down`) and comments mapped to unique query IDs.
+- **Interactive UI**: Multi-view Streamlit dashboard with a chat interface, execution trace inspection, document catalog explorer, and file uploader.
+- **Comprehensive Test Suite**: 55 unit and integration tests passing in Pytest.
+
+---
+
+## System Architecture
 
 ```text
-express-analytics-rag/
-├── .env                          # Local environment configuration
-├── .env.example                  # Template configuration with descriptions
-├── .gitignore                    # Git ignore file (cache, venv, databases, vector stores)
-├── README.md                     # Comprehensive project guide and documentation
-├── requirements.txt              # Project dependencies (FastAPI, LangGraph, ChromaDB, etc.)
-├── verify_ingestion.py           # CLI tool to verify Phase 1 & 2 loading & chunking
-├── verify_vector_store.py        # CLI tool to verify Phase 3 indexing & retrieval
-├── verify_workflow.py            # CLI tool to verify Phase 4 LangGraph self-corrective workflow
-├── verify_frontend.py            # CLI tool to verify Phase 6 Streamlit client & API integration
-│
-├── chroma_db/                    # Persistent ChromaDB storage directory
-│
-├── data/
-│   └── documents/                # Corpus of technical documentation files
-│       ├── fastapi_overview.md       # Markdown document on FastAPI architecture
-│       ├── pydantic_validation.md    # Markdown document on Pydantic V2 models
-│       ├── python_typing_guide.txt   # Plain text guide on Python typing system
-│       └── langgraph_core_concepts.html # HTML document on LangGraph workflows
-│
-├── frontend/                     # Streamlit Frontend Application (Phase 6)
-│   ├── app.py                    # Main Streamlit dashboard (Chat, Explorer, Upload)
-│   ├── api_client.py             # Centralized HTTP API client for FastAPI
-│   └── requirements.txt          # Frontend dependencies (streamlit, requests)
-│
-├── src/
-│   ├── __init__.py
-│   ├── config.py                 # Pydantic Settings configuration loader
-│   ├── main.py                   # FastAPI main entry point & lifespan handlers
-│   │
-│   ├── api/                      # Web API Routing & Schemas
-│   │   ├── __init__.py
-│   │   ├── routes.py             # FastAPI routes (/query, /ingest, /documents, /feedback, etc.)
-│   │   └── schemas.py            # Pydantic request/response schemas
-│   │
-│   ├── database/                 # SQLite Persistence
-│   │   ├── __init__.py
-│   │   └── feedback_db.py        # SQLite feedback database manager
-│   │
-│   ├── embeddings/               # Vector Embeddings Module
-│   │   ├── __init__.py
-│   │   └── models.py             # Google Gemini Embeddings & Deterministic test provider
-│   │
-│   ├── graph/                    # LangGraph Self-Corrective RAG Workflow
-│   │   ├── __init__.py
-│   │   ├── edges.py              # Conditional routing logic (generate vs rewrite)
-│   │   ├── nodes.py              # 5 workflow nodes (analysis, retrieve, grade, rewrite, generate)
-│   │   ├── state.py              # TypedDict GraphState & Pydantic structured output schemas
-│   │   └── workflow.py           # StateGraph builder and compilation pipeline
-│   │
-│   ├── ingestion/                # Document Ingestion & Processing Layer
-│   │   ├── __init__.py
-│   │   ├── loaders.py            # Multi-format document parser (MD, TXT, HTML)
-│   │   └── splitter.py           # RecursiveCharacterTextSplitter chunking engine
-│   │
-│   ├── llm/                      # LLM Integration Module
-│   │   ├── __init__.py
-│   │   └── models.py             # ChatGoogleGenerativeAI & MockChatModel for offline tests
-│   │
-│   ├── retrieval/                # Vector Store & Search Layer
-│   │   ├── __init__.py
-│   │   └── vector_store.py       # ChromaVectorStore (persistence, deduplication, search)
-│   │
-│   ├── services/                 # Business Logic Service Layer
-│   │   ├── __init__.py
-│   │   ├── document_service.py   # Aggregates indexed documents from ChromaDB
-│   │   ├── feedback_service.py   # Validates and records user feedback
-│   │   ├── ingestion_service.py  # Handles file uploads, sanitization, chunking & indexing
-│   │   └── query_service.py      # Executes LangGraph pipeline & formats response
-│   │
-│   └── utils/                    # Shared Utilities
-│       ├── __init__.py
-│       └── logger.py             # Centralized structured logger
-│
-└── tests/                        # Automated Pytest Suite (52 tests, 100% passing)
-    ├── __init__.py
-    ├── test_api.py               # Tests for all FastAPI endpoints (/query, /ingest, /documents, /feedback)
-    ├── test_api_client.py        # Tests for frontend API client methods
-    ├── test_embeddings.py        # Tests for embedding generation and factory
-    ├── test_feedback_db.py       # Tests for SQLite feedback schema and queries
-    ├── test_graph_nodes.py       # Tests for each LangGraph node independently
-    ├── test_loaders.py           # Tests for document loaders and edge cases
-    ├── test_splitter.py          # Tests for text splitting and metadata integrity
-    ├── test_vector_store.py      # Tests for ChromaDB persistence, search, deduplication
-    └── test_workflow.py          # Tests for end-to-end self-corrective LangGraph workflow
+                           ┌─────────────────────────────┐
+                           │      Streamlit Frontend     │
+                           │      (frontend/app.py)      │
+                           └──────────────┬──────────────┘
+                                          │ HTTP / REST
+                                          ▼
+                           ┌─────────────────────────────┐
+                           │       FastAPI Backend       │
+                           │     (src/api/routes.py)     │
+                           └──────────────┬──────────────┘
+                                          │
+          ┌───────────────────────────────┼───────────────────────────────┐
+          │                               │                               │
+          ▼                               ▼                               ▼
+┌───────────────────┐           ┌───────────────────┐           ┌───────────────────┐
+│   QueryService    │           │ IngestionService  │           │  FeedbackService  │
+│(src/services/...) │           │(src/services/...) │           │  (SQLite Database)│
+└─────────┬─────────┘           └─────────┬─────────┘           └─────────┬─────────┘
+          │                               │                               │
+          ▼                               ▼                               │
+┌───────────────────┐           ┌───────────────────┐                     │
+│ LangGraph Engine  │           │ Loaders & Splitter│                     │
+│  (StateGraph)     │           │(src/ingestion/...)│                     │
+└─────────┬─────────┘           └─────────┬─────────┘                     │
+          │                               │                               │
+          └───────────────────────┬───────┴───────────────────────────────┘
+                                  │
+                                  ▼
+                  ┌───────────────────────────────┐
+                  │       ChromaVectorStore       │
+                  │   - Persistent local store    │
+                  │   - Cosine similarity metric  │
+                  │   - SHA-256 chunk dedup       │
+                  └───────────────────────────────┘
 ```
 
 ---
 
-## Phase 4 Self-Corrective LangGraph Workflow
+## LangGraph Workflow
+
+The core reasoning loop is modeled as a compiled LangGraph `StateGraph`:
 
 ```text
-                 START
-                   │
-                   ▼
-         [ 1. query_analysis ]
-         - Identifies intent (conceptual, how-to, troubleshooting, api_reference)
-         - Expands ambiguous phrasing into domain-specific search query
-                   │
-                   ▼
-   ┌─────────> [ 2. retrieve ]
-   │           - Searches ChromaDB using current search_query
-   │           - Retrieves top-k chunks with provenance metadata
-   │               │
-   │               ▼
-   │     [ 3. grade_documents ]
-   │     - LLM evaluates relevance of each retrieved chunk
-   │     - Filters out noise/irrelevant content
-   │               │
-   │               ▼
-   │      < decide_to_generate_or_retry >
-   │         │
-   │         ├── Relevant Chunks Found OR Retries >= MAX_RETRIES (2)
-   │         │     │
-   │         │     ▼
-   │         │  [ 4. generate ]
-   │         │  - If context available: grounded answer citing sources
-   │         │  - If fallback: safe non-hallucinating message
-   │         │     │
-   │         │     ▼
-   │         │    END
-   │         │
-   │         └── No Relevant Chunks AND Retries < MAX_RETRIES
-   │               │
-   │               ▼
-   └────── [ 5. rewrite_query ]
-           - Increments retry_count
-           - Expands query with technical synonyms & alternative keywords
+                   START
+                     │
+                     ▼
+           [ 1. query_analysis ]
+           - Classify intent (conceptual, how-to, troubleshooting, api_reference)
+           - Expand ambiguous phrasing into a keyword-rich retrieval query
+                     │
+                     ▼
+     ┌────> [ 2. retrieve ]
+     │      - Embed query and retrieve top-k chunks from ChromaDB
+     │               │
+     │               ▼
+     │      [ 3. grade_documents ]
+     │      - Grader evaluates candidate chunks for relevance to the question
+     │      - Filters out irrelevant noise
+     │               │
+     │               ▼
+     │       < Conditional Edge >
+     │        (decide_to_generate_or_retry)
+     │          │
+     │          ├── [Relevant Chunks >= 1] OR [Retries >= MAX_RETRIES]
+     │          │     │
+     │          │     ▼
+     │          │  [ 4. generate ]
+     │          │  - Synthesize answer strictly from verified context
+     │          │  - Attach source citations ([filename.md])
+     │          │  - Trigger safe fallback message if 0 relevant chunks
+     │          │     │
+     │          │     ▼
+     │          │    END
+     │          │
+     │          └── [0 Relevant Chunks] AND [Retries < MAX_RETRIES]
+     │                │
+     │                ▼
+     └───── [ 5. rewrite_query ]
+            - Reformulate query with technical synonyms
+            - Increment retry counter
+            - Route back to [retrieve]
 ```
 
 ---
 
-## Phase 5 FastAPI API Reference
+## Tech Stack
 
-The server exposes both versioned (`/api/v1/...`) and standard root endpoints (`/...`) to support all client conventions:
+| Layer                   | Technology                                                                               | Purpose                                                 |
+| :---------------------- | :--------------------------------------------------------------------------------------- | :------------------------------------------------------ |
+| **Backend API**         | FastAPI, Uvicorn                                                                         | Async REST endpoints, Pydantic validation, CORS         |
+| **Orchestration**       | LangGraph, LangChain Core                                                                | Cyclical StateGraph with typed `GraphState`             |
+| **Vector Database**     | ChromaDB                                                                                 | Local persistent vector storage with cosine distance    |
+| **LLMs Supported**      | Google Gemini (`gemini-1.5-flash`), Groq (`qwen/qwen3.8-27b`, `llama-3.3-70b-versatile`) | Query analysis, document grading, answer generation     |
+| **Embeddings**          | Google Gemini (`models/text-embedding-004`)                                              | 768-dimensional dense vector embeddings                 |
+| **Feedback Store**      | SQLite 3 (`feedback.db`)                                                                 | Relational persistence for user thumbs up/down ratings  |
+| **Frontend UI**         | Streamlit                                                                                | Chat interface, document explorer, file uploader        |
+| **Document Processing** | BeautifulSoup4, RecursiveCharacterTextSplitter                                           | HTML cleanup, title extraction, hierarchical chunking   |
+| **Testing**             | Pytest, TestClient                                                                       | Automated test suite with 55 unit and integration tests |
 
-### 1. `POST /api/v1/query` (and `/query`)
-Executes the LangGraph self-corrective RAG workflow.
+---
 
-**Request Body**:
-```json
-{
-  "question": "How do I validate models with Pydantic BaseModel?",
-  "max_retries": 2
-}
+## Quickstart Guide
+
+### Prerequisites
+
+- Python 3.9, 3.10, or 3.11 installed.
+- Git.
+
+### Installation
+
+1. **Clone the repository:**
+
+   ```bash
+   git clone <repository-url>
+   cd "untitled folder"
+   ```
+
+2. **Create and activate a virtual environment:**
+
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate       # On Windows: .venv\Scripts\activate
+   ```
+
+3. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   pip install -r frontend/requirements.txt
+   ```
+
+### Configuration
+
+Copy the example environment file:
+
+```bash
+cp .env.example .env
 ```
 
-**Response Body**:
+Open `.env` and configure your API key. You can use either Groq (recommended for ultra-low latency) or Google Gemini:
+
+```env
+# Application Settings
+APP_NAME="Express Analytics RAG Assistant"
+APP_ENV="development"
+PORT=8000
+HOST="0.0.0.0"
+
+# Document & Storage Paths
+DOCUMENTS_DIR="data/documents"
+CHUNK_SIZE=800
+CHUNK_OVERLAP=150
+CHROMA_PERSIST_DIRECTORY="chroma_db"
+CHROMA_COLLECTION_NAME="technical_documentation"
+SQLITE_DB_PATH="feedback.db"
+
+# LLM Provider Configuration
+LLM_PROVIDER="groq"                  # "groq", "gemini", or "mock"
+GROQ_API_KEY="gsk_..."               # Get from https://console.groq.com
+GROQ_MODEL="qwen/qwen3.8-27b"
+
+# Google Gemini Settings (optional if using Groq)
+GEMINI_API_KEY=""                    # Get from https://aistudio.google.com
+GEMINI_LLM_MODEL="gemini-1.5-flash"
+GEMINI_EMBEDDING_MODEL="models/text-embedding-004"
+
+# Retrieval & Workflow Parameters
+MAX_RETRIES=2
+DEFAULT_TOP_K=4
+SIMILARITY_SCORE_THRESHOLD=0.0
+```
+
+> **Offline Mode**: If no API keys are provided in `.env`, the system automatically falls back to internal deterministic embeddings and mock chat models. The entire API, frontend, and test suite run without internet connectivity.
+
+### Running the Services
+
+#### 1. Start the FastAPI Backend
+
+```bash
+uvicorn src.main:app --reload --port 8000
+```
+
+- Swagger API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- ReDoc Docs: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+- Health Endpoint: [http://localhost:8000/health](http://localhost:8000/health)
+
+#### 2. Start the Streamlit Frontend
+
+In a separate terminal window:
+
+```bash
+source .venv/bin/activate
+streamlit run frontend/app.py --server.port 8501
+```
+
+Open [http://localhost:8501](http://localhost:8501) in your browser.
+
+---
+
+## API Reference & Examples
+
+### 1. Query Assistant (`POST /api/v1/query`)
+
+Submits a technical question to the LangGraph pipeline for retrieval, grading, self-correction, and generation.
+
+**Request:**
+
+```bash
+curl -X POST http://localhost:8000/api/v1/query \
+  -H "Content-Type: application/json" \
+  -d '{
+    "question": "How does FastAPI handle dependency injection?",
+    "max_retries": 2
+  }'
+```
+
+**Response (`200 OK`):**
+
 ```json
 {
-  "query_id": "993fe01b-c744-4861-bbd4-539091bca72b",
-  "question": "How do I validate models with Pydantic BaseModel?",
-  "answer": "Based on the technical documentation:\n\nIn Pydantic V2, you define schemas by inheriting from BaseModel...",
-  "citations": [
-    "pydantic_validation.md"
-  ],
+  "query_id": "c3e57b98-1d22-48a0-9c10-388cf625801e",
+  "question": "How does FastAPI handle dependency injection?",
+  "answer": "FastAPI provides a built-in Dependency Injection system using the `Depends` function. Dependencies can be declared in path operations to manage database sessions, authentication, and shared logic...",
+  "citations": ["fastapi_overview.md"],
   "is_fallback": false,
   "retry_count": 0,
   "query_intent": "conceptual",
-  "search_query": "validate models with Pydantic BaseModel",
+  "search_query": "FastAPI dependency injection mechanism Depends function",
   "retrieved_chunks_count": 4,
-  "relevant_chunks_count": 4
+  "relevant_chunks_count": 1
 }
 ```
 
 ---
 
-### 2. `POST /api/v1/ingest` (and `/ingest`)
-Uploads Markdown (`.md`), Plain Text (`.txt`), or HTML (`.html`) files to the server, parses them, splits them into semantic chunks, and indexes them in ChromaDB.
+### 2. Ingest Files (`POST /api/v1/ingest`)
 
-**Request**: Multipart form data with one or more files under key `files`.
+Uploads Markdown (`.md`), text (`.txt`), or HTML (`.html`) files. Documents are parsed, split into chunks, deduplicated via SHA-256 hashes, and stored in ChromaDB.
 
-**Response Body**:
+**Request:**
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ingest \
+  -F "files=@data/documents/fastapi_overview.md"
+```
+
+**Response (`200 OK`):**
+
 ```json
 {
-  "uploaded_files": ["new_documentation.md"],
-  "failed_files": [],
-  "total_chunks_indexed": 3,
+  "uploaded_files": ["fastapi_overview.md"],
+  "total_chunks_indexed": 0,
   "total_chunks_updated": 0,
-  "total_chunks_skipped": 0,
-  "total_store_chunks": 15
+  "total_chunks_skipped": 3,
+  "total_store_chunks": 12,
+  "failed_files": []
 }
 ```
 
 ---
 
-### 3. `GET /api/v1/documents` (and `/documents`)
-Inspects the persistent ChromaDB collection and returns metadata for all indexed documents.
+### 3. Ingest URLs (`POST /api/v1/ingest/url`)
 
-**Response Body**:
+Fetches documentation directly from HTTP/HTTPS URLs, sanitizes HTML, extracts titles, chunks the content, and indexes it into ChromaDB.
+
+**Request:**
+
+```bash
+curl -X POST http://localhost:8000/api/v1/ingest/url \
+  -H "Content-Type: application/json" \
+  -d '{
+    "urls": [
+      "https://fastapi.tiangolo.com/tutorial"
+    ]
+  }'
+```
+
+---
+
+### 4. List Documents (`GET /api/v1/documents`)
+
+Returns a catalog of all documents currently indexed in ChromaDB with metadata and chunk counts.
+
+**Request:**
+
+```bash
+curl -X GET http://localhost:8000/api/v1/documents
+```
+
+**Response (`200 OK`):**
+
 ```json
 {
   "total_documents": 4,
@@ -248,11 +359,35 @@ Inspects the persistent ChromaDB collection and returns metadata for all indexed
   "documents": [
     {
       "source_filename": "fastapi_overview.md",
-      "document_title": "FastAPI Architecture Overview",
+      "document_title": "FastAPI Overview and Core Architecture",
       "file_type": ".md",
       "source_path": "data/documents/fastapi_overview.md",
       "chunk_count": 3,
-      "total_characters": 2240
+      "total_characters": 2314
+    },
+    {
+      "source_filename": "langgraph_core_concepts.html",
+      "document_title": "LangGraph Core Concepts and State Management",
+      "file_type": ".html",
+      "source_path": "data/documents/langgraph_core_concepts.html",
+      "chunk_count": 3,
+      "total_characters": 1942
+    },
+    {
+      "source_filename": "pydantic_validation.md",
+      "document_title": "Pydantic V2 Data Validation and Serialization",
+      "file_type": ".md",
+      "source_path": "data/documents/pydantic_validation.md",
+      "chunk_count": 3,
+      "total_characters": 1858
+    },
+    {
+      "source_filename": "python_typing_guide.txt",
+      "document_title": "Python Typing Guide - Type Annotations and Generics",
+      "file_type": ".txt",
+      "source_path": "data/documents/python_typing_guide.txt",
+      "chunk_count": 3,
+      "total_characters": 2185
     }
   ]
 }
@@ -260,158 +395,197 @@ Inspects the persistent ChromaDB collection and returns metadata for all indexed
 
 ---
 
-### 4. `POST /api/v1/feedback` (and `/feedback`)
-Persists user ratings and qualitative feedback into an SQLite database (`feedback.db`).
+### 5. Submit Feedback (`POST /api/v1/feedback`)
 
-**Request Body**:
-```json
-{
-  "query_id": "993fe01b-c744-4861-bbd4-539091bca72b",
-  "rating": "thumbs_up",
-  "comment": "Accurate response with correct citation of pydantic_validation.md."
-}
+Persists user ratings and optional qualitative comments in SQLite.
+
+**Request:**
+
+```bash
+curl -X POST http://localhost:8000/api/v1/feedback \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query_id": "c3e57b98-1d22-48a0-9c10-388cf625801e",
+    "rating": "thumbs_up",
+    "comment": "Accurate response with exact file citation."
+  }'
 ```
 
-**Response Body**:
+**Response (`201 Created`):**
+
 ```json
 {
   "status": "success",
-  "message": "Feedback recorded successfully.",
+  "message": "Feedback recorded successfully for query 'c3e57b98-1d22-48a0-9c10-388cf625801e'.",
   "feedback": {
     "id": 1,
-    "query_id": "993fe01b-c744-4861-bbd4-539091bca72b",
+    "query_id": "c3e57b98-1d22-48a0-9c10-388cf625801e",
     "rating": "thumbs_up",
-    "comment": "Accurate response with correct citation of pydantic_validation.md.",
-    "created_at": "2026-10-30T17:55:00.123456+00:00"
+    "comment": "Accurate response with exact file citation.",
+    "created_at": "2026-10-31T06:10:28.839119+00:00"
   }
 }
 ```
 
 ---
 
-## Phase 6 Streamlit UI Features
+## Frontend Interface
 
-The frontend application (`frontend/app.py`) provides:
-1. **💬 Conversational Chat Assistant**:
-   - ChatGPT-like interface with prompt suggestion chips.
-   - Grounded answers with clean Markdown formatting and code blocks.
-   - **Source Citations**: Distinctive badges showing exact source files cited (`fastapi_overview.md`, `pydantic_validation.md`, etc.).
-   - **Safe Fallback Indicator**: When the question is outside the corpus, triggers safe fallback notification without hallucinating.
-   - **Execution Details Expander**: Displays query intent, refined search query, number of retries, and graded relevant chunks.
-   - **Answer Feedback**: Integrated 👍 / 👎 buttons with an optional comment dialog persisting directly to SQLite.
-2. **📁 Document Explorer**:
-   - High-level metric cards: Total Documents, Total Chunks in ChromaDB, Vector Engine.
-   - Search filter to query documents by title or filename.
-   - Document cards displaying file format badges, chunk counts, character counts, and disk paths.
-3. **📤 Document Ingestion**:
-   - Drag-and-drop multi-file upload accepting `.md`, `.txt`, and `.html`.
-   - Real-time indexing statistics: uploaded count, newly indexed chunks, updated chunks, skipped duplicates.
-4. **Backend Health Indicator**:
-   - Sidebar badge displaying live connection status to FastAPI (`🟢 Backend Connected`).
+The Streamlit interface (`frontend/app.py`) provides three primary workspaces:
 
----
+1. **Chat Assistant**:
+   - Conversational chat input with live LangGraph status notifications.
+   - Grounded responses with clickable citation pills.
+   - Non-hallucination warning banner when an out-of-scope question triggers the fallback.
+   - Expandable workflow trace showing Query ID, classified intent, rewritten query text, retry count, and relevance counts.
+   - Inline feedback buttons (👍 Helpful / 👎 Inaccurate) with optional comment submission.
 
-## Installation & Setup
+2. **Document Explorer**:
+   - Live metrics: Total indexed documents, total chunks, and vector store engine status.
+   - Document cards displaying titles, formats (`.md`, `.txt`, `.html`), disk paths, and character counts.
+   - Instant search filter for finding indexed files by name or extension.
 
-```bash
-# 1. Activate virtual environment
-source .venv/bin/activate
-
-# 2. Dependencies installation
-pip install -r requirements.txt
-pip install -r frontend/requirements.txt
-
-# 3. Environment configuration
-cp .env.example .env
-```
-
-### Optional: Google Gemini API Key
-To connect to live Gemini 1.5 Flash and Gemini Embeddings, add your API key to `.env`:
-```env
-GEMINI_API_KEY="your-gemini-api-key-here"
-```
-*(If no API key is configured, the system automatically uses `MockChatModel` and `DeterministicTestEmbeddings`, enabling 100% of tests, UI verifications, and scripts to execute offline in milliseconds).*
+3. **Upload Documents**:
+   - Multi-file drag-and-drop uploader supporting Markdown, text, and HTML.
+   - Real-time indexing summary indicating newly indexed chunks, updated chunks, and skipped duplicates.
 
 ---
 
-## How to Run the Applications
+## Engineering Decisions & Design Trade-offs
 
-### 1. Launch FastAPI Backend
-In your first terminal:
-```bash
-uvicorn src.main:app --reload --port 8000
-```
-- Interactive OpenAPI / Swagger UI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+### 1. Why LangGraph for Self-Corrective RAG?
 
-### 2. Launch Streamlit Frontend
-In your second terminal:
-```bash
-streamlit run frontend/app.py --server.port 8501
+Standard chain-based pipelines (e.g., standard LangChain `RetrievalQA`) are linear DAGs. They cannot cycle backwards to reformulate a query when retrieval yields irrelevant results. LangGraph allows explicit state management (`GraphState`) and conditional edges, enabling cyclical loops where the system can inspect intermediate grading outputs, decide whether to rewrite and re-retrieve, and cleanly break out when retry bounds are reached.
+
+### 2. Chunking Strategy (800 Chars / 150 Chars Overlap)
+
+- **800 characters (~150-200 tokens)**: Technical documentation contains signatures, code snippets, and explanations. Chunks under 300 characters frequently sever function arguments or class definitions. Chunks over 1,500 characters dilute vector similarity by blending multiple topics together.
+- **150 characters overlap**: Guarantees boundary continuity so that introductory explanations and adjacent code blocks remain linked across split boundaries.
+- **Recursive Character Splitting**: Splitting on `["\n\n", "\n", " ", ""]` keeps Markdown paragraphs, headings, and code blocks intact whenever possible.
+
+### 3. Duplicate Prevention & Deterministic Chunk IDs
+
+Instead of generating random UUIDs on every upload, chunk IDs follow a deterministic scheme:
+
+```python
+chunk_id = f"{source_filename}#chunk_{chunk_index}"
 ```
-- Streamlit Web Dashboard: [http://localhost:8501](http://localhost:8501)
+
+Before vectorizing, the store computes a SHA-256 fingerprint of the chunk content. If a chunk with the same ID and hash exists in ChromaDB, embedding generation is skipped. If the hash differs, `collection.upsert` updates the vector and metadata without orphan records.
+
+### 4. Single-Pass Batch Grading vs. Sequential Calls
+
+Grading $k=4$ chunks with sequential LLM calls introduces $4 \times \text{latency}$, easily adding 3-5 seconds to every request. We implemented a batch grading node that sends all candidate chunks in a single structured prompt:
+
+- If the batch call succeeds, all chunks are graded in one LLM roundtrip.
+- If JSON parsing fails, the node automatically falls back to per-chunk grading.
+- If both fail, it safely retains all chunks rather than crashing the pipeline.
+
+### 5. Grounding & Zero-Hallucination Fallback
+
+The generation node is governed by strict system prompt constraints:
+
+- Must rely solely on the provided context.
+- Must cite filenames using bracket notation (`[fastapi_overview.md]`).
+- If no chunks pass the grader after the maximum retries, the pipeline returns a clean fallback:
+  > _"I am sorry, but the provided technical documentation does not contain sufficient information to answer your question regarding ...."_
 
 ---
 
-## Verification & Automated Test Suites
+## Project Structure
 
-### 1. Run Complete Integration Verification Script
-```bash
-python verify_frontend.py
+```text
+├── data/
+│   └── documents/              # Canonical technical documentation files
+│       ├── fastapi_overview.md
+│       ├── langgraph_core_concepts.html
+│       ├── pydantic_validation.md
+│       └── python_typing_guide.txt
+├── frontend/
+│   ├── api_client.py           # HTTP client connecting Streamlit to FastAPI
+│   ├── app.py                  # Streamlit multi-view UI
+│   └── requirements.txt        # Frontend-specific dependencies
+├── src/
+│   ├── api/
+│   │   ├── routes.py           # FastAPI endpoints (/query, /ingest, /documents, /feedback)
+│   │   └── schemas.py          # Pydantic V2 request & response schemas
+│   ├── database/
+│   │   └── feedback_db.py      # SQLite connection & CRUD operations
+│   ├── embeddings/
+│   │   └── models.py           # Gemini embeddings & offline deterministic fallback
+│   ├── graph/
+│   │   ├── edges.py            # Conditional routing logic
+│   │   ├── nodes.py            # Workflow nodes (analysis, retrieval, grading, rewrite, generation)
+│   │   ├── state.py            # TypedDict GraphState definition
+│   │   └── workflow.py         # StateGraph builder and compilation
+│   ├── ingestion/
+│   │   ├── loaders.py          # Markdown, text, HTML document loaders
+│   │   └── splitter.py         # Recursive character text chunker
+│   ├── llm/
+│   │   └── models.py           # LLM factory (Groq, Gemini, deterministic mock)
+│   ├── retrieval/
+│   │   └── vector_store.py     # ChromaDB persistence, deduplication, and search
+│   ├── services/
+│   │   ├── document_service.py # Catalog aggregation service
+│   │   ├── feedback_service.py # Feedback business logic
+│   │   ├── ingestion_service.py# File and URL upload service
+│   │   └── query_service.py    # Query pipeline execution service
+│   ├── utils/
+│   │   └── logger.py           # Structured logging utility
+│   ├── config.py               # Pydantic Settings configuration
+│   └── main.py                 # FastAPI application entrypoint
+├── tests/
+│   ├── test_api.py             # Endpoint tests
+│   ├── test_api_client.py      # Frontend API client tests
+│   ├── test_embeddings.py      # Embedding dimensionality and math tests
+│   ├── test_feedback_db.py     # SQLite persistence tests
+│   ├── test_graph_nodes.py     # Individual LangGraph node tests
+│   ├── test_loaders.py         # Document parsing and sanitization tests
+│   ├── test_splitter.py        # Chunking and overlap tests
+│   ├── test_vector_store.py    # ChromaDB deduplication and search tests
+│   └── test_workflow.py        # End-to-end LangGraph workflow tests
+├── scripts/
+│   ├── verify_frontend.py          # Automated integration verification script
+│   ├── verify_ingestion.py         # CLI ingestion verification script
+│   ├── verify_vector_store.py      # CLI vector store verification script
+│   └── verify_workflow.py          # CLI LangGraph workflow verification script
+├── .env.example                # Environment variable template
+├── pyproject.toml              # Project metadata & build tool configuration
+├── requirements.txt            # Core backend dependencies
+└── README.md                   # Project documentation
 ```
-*Automatically validates health check, document listing, technical Q&A, citations, safe fallback, feedback persistence, and file ingestion with cleanup.*
 
-### 2. Run Individual Phase Verifiers
-```bash
-python verify_workflow.py       # Phase 4 LangGraph workflow verifier
-python verify_vector_store.py   # Phase 3 ChromaDB indexing & retrieval verifier
-python verify_ingestion.py      # Phase 2 document loader & chunker verifier
-```
+---
 
-### 3. Run Automated Pytest Suite
+## Testing & Verification
+
+### Running the Test Suite
+
+Execute the complete test suite with verbose output:
+
 ```bash
 pytest -v
 ```
 
-Expected output (`52 passed in ~1.2s`):
-```text
-tests/test_api.py (14 tests: health, info, preview, search, /query, /ingest, /documents, /feedback)
-tests/test_api_client.py (7 tests: health, query, validation error, list docs, upload, feedback)
-tests/test_embeddings.py (3 tests: deterministic properties, batching, factory)
-tests/test_feedback_db.py (1 test: SQLite schema & feedback operations)
-tests/test_graph_nodes.py (6 tests: analysis, retrieval, grading, rewrite, generation)
-tests/test_loaders.py (8 tests: markdown, text, html, empty files, traversal, batch)
-tests/test_splitter.py (4 tests: recursive chunking, overlap, metadata integrity)
-tests/test_vector_store.py (5 tests: deduplication, upsert, persistence, similarity search)
-tests/test_workflow.py (4 tests: LangGraph routing, full RAG flow, CRAG self-correction)
+**Results:**
 
-======================== 52 passed, 1 warning in 1.12s =========================
+- **55 passed tests** across 9 test modules with zero failures.
+- Tests cover API routes, schema validation, document parsing, chunking logic, vector store deduplication, LangGraph nodes, conditional routing, and SQLite feedback operations.
+
+### Running Automated Verification Scripts
+
+Stand-alone scripts are provided to verify individual components in isolation:
+
+```bash
+# 1. End-to-end integration test (spawns in-process API server and verifies all 8 client interactions)
+python scripts/verify_frontend.py
+
+# 2. Verify LangGraph workflow execution, query rewriting, and fallback
+python scripts/verify_workflow.py
+
+# 3. Verify ChromaDB indexing, deduplication, and similarity search
+python scripts/verify_vector_store.py
+
+# 4. Verify document loading, HTML cleanup, and chunking
+python scripts/verify_ingestion.py
 ```
-
----
-
-## Assignment Requirements Traceability Matrix
-
-| Requirement | Implementation Component | Status |
-| :--- | :--- | :--- |
-| Corpus of technical docs (3–5 docs) | `data/documents/` (FastAPI, Pydantic, Python Typing, LangGraph) | ✅ Completed |
-| Ingestion & Multi-Format Loading | `src/ingestion/loaders.py` (`.md`, `.txt`, `.html`) | ✅ Completed |
-| Semantic Text Chunking | `src/ingestion/splitter.py` (`RecursiveCharacterTextSplitter`) | ✅ Completed |
-| Vector Store & Embeddings | `src/retrieval/vector_store.py`, `src/embeddings/models.py` | ✅ Completed |
-| Persistent Storage & Deduplication | ChromaDB persistence + SHA256 chunk deduplication | ✅ Completed |
-| LangGraph StateGraph Workflow | `src/graph/workflow.py`, `src/graph/state.py` | ✅ Completed |
-| Query Analysis Node | `src/graph/nodes.py::query_analysis` | ✅ Completed |
-| Semantic Retrieval Node | `src/graph/nodes.py::retrieval` | ✅ Completed |
-| Document Grading Node (CRAG) | `src/graph/nodes.py::document_grading` | ✅ Completed |
-| Query Rewrite Node & Retries | `src/graph/nodes.py::query_rewrite`, `src/graph/edges.py` | ✅ Completed |
-| Answer Generation with Citations | `src/graph/nodes.py::generation` | ✅ Completed |
-| Fallback without Hallucination | Safe fallback message when context is insufficient | ✅ Completed |
-| POST `/query` Endpoint | `src/api/routes.py::post_query` & `src/services/query_service.py` | ✅ Completed |
-| POST `/ingest` Endpoint | `src/api/routes.py::post_ingest` & `src/services/ingestion_service.py` | ✅ Completed |
-| GET `/documents` Endpoint | `src/api/routes.py::get_documents` & `src/services/document_service.py` | ✅ Completed |
-| POST `/feedback` Endpoint | `src/api/routes.py::post_feedback` & `src/database/feedback_db.py` | ✅ Completed |
-| Streamlit Chat Interface | `frontend/app.py` (ChatGPT-like UI with citations & fallbacks) | ✅ Completed |
-| Streamlit Document Explorer | `frontend/app.py` (Catalog, chunk metrics & search filter) | ✅ Completed |
-| Streamlit Document Upload | `frontend/app.py` (Multi-file drag & drop, indexing summary) | ✅ Completed |
-| Streamlit Feedback Module | `frontend/app.py` (Thumbs up/down + SQLite persistence) | ✅ Completed |
-| Streamlit API Client | `frontend/api_client.py` (Centralized HTTP client with error handling) | ✅ Completed |
-| Comprehensive Unit & End-to-End Tests | `tests/` (52 automated tests, 100% passing) | ✅ Completed |

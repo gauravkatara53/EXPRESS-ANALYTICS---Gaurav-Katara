@@ -4,7 +4,7 @@ import requests
 
 
 class RAGApiClient:
-    """Centralized HTTP client connecting the Streamlit UI to the FastAPI RAG backend."""
+    """HTTP client connecting Streamlit to the FastAPI backend."""
 
     def __init__(
         self,
@@ -18,7 +18,7 @@ class RAGApiClient:
         self.session = session or requests.Session()
 
     def check_health(self) -> Dict[str, Any]:
-        """Checks whether the FastAPI backend is running and healthy."""
+        """Check whether the FastAPI backend is running."""
         url = f"{self.base_url}/health"
         try:
             resp = self.session.get(url, timeout=3.0)
@@ -34,10 +34,7 @@ class RAGApiClient:
             return {"healthy": False, "error": str(e)}
 
     def query_assistant(self, question: str, max_retries: int = 1) -> Dict[str, Any]:
-        """Submits a natural language technical question to the LangGraph pipeline.
-
-        Connects to: POST /api/v1/query
-        """
+        """Submit a question to POST /api/v1/query."""
         url = f"{self.base_url}/api/v1/query"
         payload = {"question": question, "max_retries": max_retries}
         try:
@@ -66,10 +63,7 @@ class RAGApiClient:
             return {"success": False, "error": f"Unexpected error: {str(e)}"}
 
     def list_documents(self) -> Dict[str, Any]:
-        """Retrieves catalog of all indexed documents from ChromaDB.
-
-        Connects to: GET /api/v1/documents
-        """
+        """Retrieve catalog of indexed documents from GET /api/v1/documents."""
         url = f"{self.base_url}/api/v1/documents"
         try:
             resp = self.session.get(url, timeout=10.0)
@@ -90,13 +84,7 @@ class RAGApiClient:
     def upload_documents(
         self, files: List[Tuple[str, bytes, str]]
     ) -> Dict[str, Any]:
-        """Uploads and indexes documents into ChromaDB.
-
-        Args:
-            files: List of (filename, file_bytes, content_type)
-
-        Connects to: POST /api/v1/ingest
-        """
+        """Upload and index documents via POST /api/v1/ingest."""
         url = f"{self.base_url}/api/v1/ingest"
         multipart_files = [
             ("files", (filename, data, ctype)) for filename, data, ctype in files
@@ -120,10 +108,7 @@ class RAGApiClient:
     def submit_feedback(
         self, query_id: str, rating: str, comment: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Records user feedback in the SQLite database.
-
-        Connects to: POST /api/v1/feedback
-        """
+        """Submit user feedback to POST /api/v1/feedback."""
         url = f"{self.base_url}/api/v1/feedback"
         payload = {"query_id": query_id, "rating": rating, "comment": comment}
         try:

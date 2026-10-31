@@ -5,9 +5,7 @@ import streamlit as st
 from api_client import RAGApiClient
 
 
-# ------------------------------------------------------------------------------
-# Page Configuration & Dark Mode AI SaaS Theme
-# ------------------------------------------------------------------------------
+# Page configuration
 st.set_page_config(
     page_title="Express Analytics | RAG Studio",
     page_icon="⚡",
@@ -15,9 +13,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ------------------------------------------------------------------------------
-# Premium Dark Mode AI SaaS Stylesheet
-# ------------------------------------------------------------------------------
+# Dark theme stylesheet
 DARK_SAAS_CSS = """
 <style>
     /* Google Fonts Inter & JetBrains Mono */
@@ -494,9 +490,7 @@ DARK_SAAS_CSS = """
 st.markdown(DARK_SAAS_CSS, unsafe_allow_html=True)
 
 
-# ------------------------------------------------------------------------------
-# Initialize Session State
-# ------------------------------------------------------------------------------
+# Session state initialization
 if "api_url" not in st.session_state:
     st.session_state.api_url = os.getenv("API_BASE_URL", "http://localhost:8000")
 
@@ -516,9 +510,7 @@ if "prefill_question" not in st.session_state:
     st.session_state.prefill_question = None
 
 
-# ------------------------------------------------------------------------------
-# Sidebar: Branding, System Health & Navigation
-# ------------------------------------------------------------------------------
+# Sidebar: telemetry and navigation
 with st.sidebar:
     st.markdown(
         """
@@ -699,9 +691,7 @@ with st.sidebar:
     )
 
 
-# ------------------------------------------------------------------------------
-# View 1: Chat Assistant (SaaS Dark Interface)
-# ------------------------------------------------------------------------------
+# View 1: Chat Assistant
 if nav_selection == "💬 Chat Assistant":
     st.markdown(
         """
@@ -887,9 +877,7 @@ if nav_selection == "💬 Chat Assistant":
                 st.session_state.messages.append({"role": "assistant", "content": error_msg})
 
 
-# ------------------------------------------------------------------------------
-# View 2: Document Explorer (Dark SaaS Cards & Filtering)
-# ------------------------------------------------------------------------------
+# View 2: Document Explorer
 elif nav_selection == "📁 Document Explorer":
     st.markdown(
         """
@@ -1009,9 +997,7 @@ elif nav_selection == "📁 Document Explorer":
         st.error(f"Failed to load documents: {doc_resp.get('error')}")
 
 
-# ------------------------------------------------------------------------------
-# View 3: Upload Documents (Drag & Drop Dark SaaS Ingestion)
-# ------------------------------------------------------------------------------
+# View 3: Document Ingestion
 elif nav_selection == "📤 Upload Documents":
     st.markdown(
         """

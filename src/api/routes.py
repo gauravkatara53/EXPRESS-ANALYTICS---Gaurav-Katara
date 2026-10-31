@@ -3,6 +3,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
 from src.api.schemas import (
+    IngestUrlRequest,
     DocumentListResponse,
     FeedbackRequest,
     FeedbackResponse,
@@ -181,6 +182,31 @@ async def ingest_documents(
         )
     result = await service.ingest_uploaded_files(files)
     return result
+
+
+
+
+@router.post(
+    "/api/v1/ingest/url",
+    response_model=IngestUploadResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Ingest Documents from URLs",
+    description="Fetches technical documentation from external URLs, parses HTML/Markdown/Text, chunks, and indexes into ChromaDB.",
+    tags=["RAG Core"],
+)
+@router.post(
+    "/ingest/url",
+    response_model=IngestUploadResponse,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+    tags=["RAG Core"],
+)
+async def ingest_from_urls(
+    payload: IngestUrlRequest,
+    service: IngestionService = Depends(get_ingestion_service),
+) -> IngestUploadResponse:
+    """Accepts a JSON list of documentation URLs, fetches, parses, chunks, and indexes them."""
+    return await service.ingest_urls(payload.urls)
 
 
 @router.get(

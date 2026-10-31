@@ -106,7 +106,7 @@ class VectorStoreStats(BaseModel):
 
 
 # ------------------------------------------------------------------------------
-# Phase 5 Schemas: Query, Ingest, Documents, Feedback
+# Query, Ingest, Documents, and Feedback schemas
 # ------------------------------------------------------------------------------
 
 class QueryRequest(BaseModel):
@@ -139,6 +139,12 @@ class QueryResponse(BaseModel):
     search_query: str = Field(description="Final search query used for retrieval")
     retrieved_chunks_count: int = Field(description="Total candidate chunks retrieved")
     relevant_chunks_count: int = Field(description="Chunks evaluated as relevant by grader")
+
+
+class IngestUrlRequest(BaseModel):
+    """Request payload for ingesting technical documentation via URLs."""
+
+    urls: List[str] = Field(min_length=1, description="One or more HTTP/HTTPS URLs to technical documentation")
 
 
 class IngestUploadResponse(BaseModel):

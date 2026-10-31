@@ -62,10 +62,7 @@ def test_direct_search_and_stats_endpoints():
     assert "results" in search_data
 
 
-# ------------------------------------------------------------------------------
-# Phase 5 Endpoint Tests: /query, /ingest, /documents, /feedback
-# ------------------------------------------------------------------------------
-
+# Core endpoint tests: /query, /ingest, /documents, /feedback
 def test_query_endpoint_success():
     payload = {
         "question": "How do I validate models with Pydantic BaseModel?",
@@ -125,6 +122,8 @@ def test_upload_file_ingest_endpoint():
         uploaded_doc = Path("data/documents/docker_deploy_guide.md")
         if uploaded_doc.exists():
             uploaded_doc.unlink()
+        from src.api.routes import get_vector_store
+        get_vector_store().delete_document("docker_deploy_guide.md")
 
 
 def test_upload_file_unsupported_format():
@@ -196,3 +195,40 @@ def test_root_route_aliases():
     )
     assert res_fb.status_code == 201
     assert res_fb.json()["status"] == "success"
+
+
+def test_url_ingest_endpoint(monkeypatch):
+    import httpx
+
+    class MockResponse:
+        status_code = 200
+        headers = {"content-type": "text/markdown"}
+        text = "# Remote FastAPI Guide\n\nRemote FastAPI documentation fetched from a URL."
+        content = text.encode("utf-8")
+
+    async def mock_get(self, url, *args, **kwargs):
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", mock_get)
+
+    try:
+        response = client.post("/api/v1/ingest/url", json={"urls": ["https://fastapi.tiangolo.com/tutorial"]})
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["uploaded_files"]) == 1
+        assert "fastapi_tiangolo_com_tutorial.md" in data["uploaded_files"][0]
+        assert data["total_chunks_indexed"] >= 1
+    finally:
+        target = Path("data/documents/fastapi_tiangolo_com_tutorial.md")
+        if target.exists():
+            target.unlink()
+        from src.api.routes import get_vector_store
+        get_vector_store().delete_document("fastapi_tiangolo_com_tutorial.md")
+
+
+def test_url_ingest_invalid_url():
+    response = client.post("/api/v1/ingest/url", json={"urls": ["not_a_valid_url"]})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["failed_files"]) == 1
+    assert "invalid URL" in data["failed_files"][0]

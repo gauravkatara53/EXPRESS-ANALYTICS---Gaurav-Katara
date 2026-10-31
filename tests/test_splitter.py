@@ -84,3 +84,24 @@ def test_summary_generation(sample_document: LoadedDocument):
     assert summary.average_chunk_length > 0
     assert len(summary.chunks_preview) <= 2
 
+
+def test_splitting_with_trailing_empty_content():
+    content = "First meaningful paragraph.\n\nSecond meaningful paragraph.\n\n   \n\n\n   "
+    doc = LoadedDocument(
+        source_filename="trailing_ws.md",
+        source_path="data/documents/trailing_ws.md",
+        document_title="Trailing WS Doc",
+        file_type=".md",
+        raw_content=content,
+        character_count=len(content),
+        file_size_bytes=len(content.encode("utf-8")),
+    )
+    splitter = DocumentSplitter(chunk_size=30, chunk_overlap=5)
+    chunks = splitter.split_document(doc)
+
+    assert len(chunks) > 0
+    for idx, chunk in enumerate(chunks):
+        assert chunk.content.strip() != ""
+        assert chunk.metadata.chunk_index == idx
+        assert chunk.metadata.total_chunks == len(chunks)
+
