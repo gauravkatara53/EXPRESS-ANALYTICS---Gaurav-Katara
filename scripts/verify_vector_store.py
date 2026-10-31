@@ -18,7 +18,7 @@ logger = get_logger("verify_vector_store")
 
 def main():
     print("=" * 75)
-    print(" Express Analytics RAG Assistant - Phase 3 Vector Store Verifier ")
+    print(" Express Analytics RAG Assistant - Vector Store & Retrieval Verifier ")
     print("=" * 75)
     print(f"Chroma Directory : {settings.CHROMA_PERSIST_DIRECTORY}")
     print(f"Collection Name  : {settings.CHROMA_COLLECTION_NAME}")
@@ -117,7 +117,7 @@ def main():
         assert top_match.score > 0.0, "Similarity score must be positive"
 
     print("\n" + "=" * 75)
-    print(" ALL PHASE 3 VERIFICATIONS PASSED: ChromaDB & Embeddings Ready ")
+    print(" ALL VECTOR STORE VERIFICATIONS PASSED: ChromaDB & Embeddings Ready ")
     print("=" * 75)
 
 

@@ -35,7 +35,7 @@ def ensure_corpus_indexed(store: ChromaVectorStore):
 
 def main():
     print("=" * 80)
-    print(" Express Analytics RAG Assistant - Phase 4 LangGraph Workflow Verifier ")
+    print(" Express Analytics RAG Assistant - LangGraph Workflow Verifier ")
     print("=" * 80)
     print(f"Max Retries      : {settings.MAX_RETRIES}")
     print(f"Vector Store     : {settings.CHROMA_PERSIST_DIRECTORY}")
@@ -99,7 +99,7 @@ def main():
     print("\n-> SUCCESS: Scenario 2 safely rewrote queries and fell back without hallucination.")
 
     print("\n" + "=" * 80)
-    print(" ALL PHASE 4 WORKFLOW VERIFICATIONS PASSED: LangGraph Self-Corrective RAG Ready ")
+    print(" ALL WORKFLOW VERIFICATIONS PASSED: LangGraph Self-Corrective RAG Ready ")
     print("=" * 80)
 
 

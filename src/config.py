@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     )
     CHROMA_COLLECTION_NAME: str = "technical_documentation"
 
-    # SQLite Feedback Database settings (Phase 5)
+    # SQLite Feedback Database settings
     SQLITE_DB_PATH: Path = Field(
         default_factory=lambda: Path(os.getenv("SQLITE_DB_PATH", "feedback.db"))
     )
